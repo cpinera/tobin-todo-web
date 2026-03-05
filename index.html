@@ -203,6 +203,31 @@
   </div>
 </div>
 
+<div id="cuentasPanel" style="display:none">
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    <select id="filter-mes" onchange="CuentasApp.render()" style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 16px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value="1">Enero</option><option value="2">Febrero</option><option value="3" selected>Marzo</option><option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option><option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option><option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+    </select>
+    <select id="filter-anio" onchange="CuentasApp.render()" style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 16px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+    </select>
+    <select id="filter-estado" onchange="CuentasApp.render()" style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 16px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value="all">Todos</option><option value="Por pagar">Por pagar</option><option value="Pagado">Pagado</option>
+    </select>
+    <button class="btn-primary" onclick="CuentasApp.seedMonth(parseInt(document.getElementById('filter-mes').value),parseInt(document.getElementById('filter-anio').value))" style="margin-left:auto">+ Generar mes</button>
+  </div>
+  <div class="stats-row" style="margin-bottom:20px">
+    <div class="stat-card"><div class="num" id="c-total">-</div><div class="lbl">Total del mes</div></div>
+    <div class="stat-card c-green"><div class="num" id="c-pagadas">0</div><div class="lbl">Pagadas</div></div>
+    <div class="stat-card c-yellow"><div class="num" id="c-pagar">0</div><div class="lbl">Por pagar</div></div>
+    <div class="stat-card c-blue"><div class="num" id="c-pendiente">-</div><div class="lbl">Monto pendiente</div></div>
+  </div>
+  <div class="col-headers" style="grid-template-columns:1fr 130px 130px 90px 28px">
+    <span>Cuenta</span><span>Monto</span><span>Estado</span><span>Variación</span><span></span>
+  </div>
+  <div id="cuentasList"></div>
+</div>
+
 <div class="overlay" id="cuotasModal" style="display:none">
   <div class="modal">
     <h2 id="cuotas-title">Cuotas</h2>
@@ -225,44 +250,6 @@
   </div>
 </div>
 
-
-<div id="cuentasPanel" style="display:none">
-  <!-- Filters -->
-  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
-    <select id="filter-mes" onchange="CuentasApp.render()"
-      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
-      <option value=1 >Enero</option><option value=2 >Febrero</option><option value=3 selected>Marzo</option><option value=4 >Abril</option><option value=5 >Mayo</option><option value=6 >Junio</option><option value=7 >Julio</option><option value=8 >Agosto</option><option value=9 >Septiembre</option><option value=10 >Octubre</option><option value=11 >Noviembre</option><option value=12 >Diciembre</option>
-    </select>
-    <select id="filter-anio" onchange="CuentasApp.render()"
-      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
-      <option value="2025">2025</option>
-      <option value="2026" selected>2026</option>
-      <option value="2027">2027</option>
-    </select>
-    <select id="filter-estado" onchange="CuentasApp.render()"
-      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
-      <option value="all">Todos</option>
-      <option value="Por pagar">Por pagar</option>
-      <option value="Pagado">Pagado</option>
-    </select>
-    <button class="btn-primary" onclick="CuentasApp.seedMonth(parseInt(document.getElementById('filter-mes').value),parseInt(document.getElementById('filter-anio').value))" style="margin-left:auto">+ Generar mes</button>
-  </div>
-
-  <!-- Stats -->
-  <div class="stats-row" style="margin-bottom:20px">
-    <div class="stat-card"><div class="num" id="c-total">/bin/sh</div><div class="lbl">Total del mes</div></div>
-    <div class="stat-card c-green"><div class="num" id="c-pagadas">0</div><div class="lbl">Pagadas</div></div>
-    <div class="stat-card c-yellow"><div class="num" id="c-pagar">0</div><div class="lbl">Por pagar</div></div>
-    <div class="stat-card c-blue"><div class="num" id="c-pendiente">/bin/sh</div><div class="lbl">Monto pendiente</div></div>
-  </div>
-
-  <!-- Col headers -->
-  <div class="col-headers" style="grid-template-columns:1fr 120px 120px 80px 28px">
-    <span>Cuenta</span><span>Monto</span><span>Estado</span><span>Variación</span><span></span>
-  </div>
-
-  <div id="cuentasList"></div>
-</div>
 
 <div id="toast"></div>
 
