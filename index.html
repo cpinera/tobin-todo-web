@@ -152,6 +152,11 @@
   </div>
 </div>
 
+<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0">
+  <button id="tab-tareas" onclick="switchTab('tareas')" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);font-size:14px;font-weight:600;padding:12px 20px;cursor:pointer;font-family:inherit">Tareas</button>
+  <button id="tab-cuentas" onclick="switchTab('cuentas')" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:14px;font-weight:500;padding:12px 20px;cursor:pointer;font-family:inherit">Cuentas</button>
+</div>
+
 <div class="container">
   <div class="stats-row">
     <div class="stat-card"><div class="num" id="s-total">0</div><div class="lbl">Total</div></div>
@@ -168,6 +173,7 @@
     <button class="filter-chip" onclick="setSortScore(this)">⚡ Por prioridad</button>
   </div>
 
+  <div id="tasksView">
   <div class="col-headers">
     <span></span><span>Tarea</span><span>Valor / Esfuerzo</span><span>Estado</span><span>Fecha</span><span>Cuotas</span><span></span>
   </div>
@@ -217,6 +223,45 @@
       <button class="btn-confirm-del" onclick="confirmDelete()">Eliminar</button>
     </div>
   </div>
+</div>
+
+
+<div id="cuentasPanel" style="display:none">
+  <!-- Filters -->
+  <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    <select id="filter-mes" onchange="CuentasApp.render()"
+      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value=1 >Enero</option><option value=2 >Febrero</option><option value=3 selected>Marzo</option><option value=4 >Abril</option><option value=5 >Mayo</option><option value=6 >Junio</option><option value=7 >Julio</option><option value=8 >Agosto</option><option value=9 >Septiembre</option><option value=10 >Octubre</option><option value=11 >Noviembre</option><option value=12 >Diciembre</option>
+    </select>
+    <select id="filter-anio" onchange="CuentasApp.render()"
+      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value="2025">2025</option>
+      <option value="2026" selected>2026</option>
+      <option value="2027">2027</option>
+    </select>
+    <select id="filter-estado" onchange="CuentasApp.render()"
+      style="background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;color:var(--text);outline:none;cursor:pointer;font-family:inherit">
+      <option value="all">Todos</option>
+      <option value="Por pagar">Por pagar</option>
+      <option value="Pagado">Pagado</option>
+    </select>
+    <button class="btn-primary" onclick="CuentasApp.seedMonth(parseInt(document.getElementById('filter-mes').value),parseInt(document.getElementById('filter-anio').value))" style="margin-left:auto">+ Generar mes</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" style="margin-bottom:20px">
+    <div class="stat-card"><div class="num" id="c-total">/bin/sh</div><div class="lbl">Total del mes</div></div>
+    <div class="stat-card c-green"><div class="num" id="c-pagadas">0</div><div class="lbl">Pagadas</div></div>
+    <div class="stat-card c-yellow"><div class="num" id="c-pagar">0</div><div class="lbl">Por pagar</div></div>
+    <div class="stat-card c-blue"><div class="num" id="c-pendiente">/bin/sh</div><div class="lbl">Monto pendiente</div></div>
+  </div>
+
+  <!-- Col headers -->
+  <div class="col-headers" style="grid-template-columns:1fr 120px 120px 80px 28px">
+    <span>Cuenta</span><span>Monto</span><span>Estado</span><span>Variación</span><span></span>
+  </div>
+
+  <div id="cuentasList"></div>
 </div>
 
 <div id="toast"></div>
@@ -294,7 +339,27 @@ async function saveField(id,field,value){
   const t=allTasks.find(t=>t.id===id); if(!t||t[field]===value) return;
   t[field]=value; render();
   try{await api(`/tasks/${id}`,"PATCH",{[field]:value});}
-  catch(e){showToast(e.message,"error");fetchTasks();}
+  catch(e){showToast(e.message,"error");
+function switchTab(tab) {
+  const tareas  = document.getElementById('tasksView');
+  const cuentas = document.getElementById('cuentasPanel');
+  const tTab = document.getElementById('tab-tareas');
+  const cTab = document.getElementById('tab-cuentas');
+  if (tab === 'tareas') {
+    tareas.style.display  = 'block';
+    cuentas.style.display = 'none';
+    tTab.style.borderBottomColor = 'var(--accent)'; tTab.style.color = 'var(--accent)'; tTab.style.fontWeight = '600';
+    cTab.style.borderBottomColor = 'transparent';   cTab.style.color = 'var(--muted)';  cTab.style.fontWeight = '500';
+  } else {
+    tareas.style.display  = 'none';
+    cuentas.style.display = 'block';
+    tTab.style.borderBottomColor = 'transparent';   tTab.style.color = 'var(--muted)';  tTab.style.fontWeight = '500';
+    cTab.style.borderBottomColor = 'var(--accent)'; cTab.style.color = 'var(--accent)'; cTab.style.fontWeight = '600';
+    CuentasApp.init();
+  }
+}
+
+fetchTasks();}
 }
 async function saveVE(id,field,value){await saveField(id,field,Math.max(1,Math.min(10,parseInt(value)||5)));}
 async function toggleEstado(id){const t=allTasks.find(t=>t.id===id);if(!t)return;await saveField(id,"estado",STATUS[(STATUS.indexOf(t.estado)+1)%STATUS.length]);}
@@ -359,5 +424,6 @@ document.getElementById("cuotasModal").addEventListener("click",e=>{if(e.target=
 document.getElementById("confirmModal").addEventListener("click",e=>{if(e.target===document.getElementById("confirmModal"))closeConfirm();});
 fetchTasks();
 </script>
+<script src="cuentas.js"></script>
 </body>
 </html>
