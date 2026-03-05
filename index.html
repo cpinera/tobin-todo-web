@@ -214,6 +214,8 @@ function scoreColor(s){
 function render(){
   let tasks=allTasks.filter(t=>curFilter==="all"||(["Pendiente","En progreso","Listo"].includes(curFilter)?t.estado===curFilter:true));
   if(sortByScore) tasks=[...tasks].sort((a,b)=>((b.valor||5)/(b.esfuerzo||5))-((a.valor||5)/(a.esfuerzo||5)));
+  // Listos siempre al fondo
+  tasks.sort((a,b)=>(a.estado==="Listo"?1:0)-(b.estado==="Listo"?1:0));
 
   document.getElementById("s-total").textContent=allTasks.length;
   document.getElementById("s-pend").textContent=allTasks.filter(t=>t.estado==="Pendiente").length;
