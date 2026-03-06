@@ -195,9 +195,9 @@
   <div id="view-emails" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="filter-chip active" id="ef-all"     onclick="setEmailFilter('pending',this)">Pendientes</button>
-        <button class="filter-chip" id="ef-urgente"  onclick="setEmailFilter('urgente',this)">🔴 Urgentes</button>
-        <button class="filter-chip" id="ef-util"     onclick="setEmailFilter('util',this)">🔵 Útiles</button>
+        <button class="filter-chip active" id="ef-all"     onclick="setEmailFilter('pending',this)">Todos</button>
+        <button class="filter-chip" id="ef-urgente"  onclick="setEmailFilter('urgente',this)">🔴 Priorizado</button>
+        <button class="filter-chip" id="ef-util"     onclick="setEmailFilter('util',this)">🔵 Útil</button>
         <button class="filter-chip" id="ef-poco"     onclick="setEmailFilter('poco_util',this)">⚪ Poco útil</button>
         <button class="filter-chip" id="ef-spam"     onclick="setEmailFilter('spam',this)">⛔ Spam</button>
         <button class="filter-chip" id="ef-approved" onclick="setEmailFilter('approved',this)">✅ Ejecutados</button>
@@ -210,7 +210,7 @@
 
     <div class="stats-row" style="margin-bottom:20px">
       <div class="stat-card"><div class="num" id="e-total">0</div><div class="lbl">Total</div></div>
-      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-urgentes" style="color:#d93025">0</div><div class="lbl">Urgentes</div></div>
+      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-urgentes" style="color:#d93025">0</div><div class="lbl">Priorizado</div></div>
       <div class="stat-card" style="border-left:3px solid #1a73e8"><div class="num" id="e-utiles" style="color:#1a73e8">0</div><div class="lbl">Útiles</div></div>
       <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-spam" style="color:#9aa0a6">0</div><div class="lbl">Spam</div></div>
     </div>
@@ -236,7 +236,7 @@
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Clasificación</label>
           <select id="em-classification" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit">
-            <option value="urgente">🔴 Urgente</option>
+            <option value="urgente">🔴 Priorizado</option>
             <option value="util">🔵 Útil</option>
             <option value="poco_util">⚪ Poco útil</option>
             <option value="spam">⛔ Spam</option>
@@ -567,10 +567,10 @@ fetchTasks();
 // Email module - inline in index.html
 
 const CLS_STYLE = {
-  urgente:   { bg: "#fce8e6", color: "#d93025", icon: "🔴" },
-  util:      { bg: "#e8f0fe", color: "#1a73e8", icon: "🔵" },
-  poco_util: { bg: "#f1f3f4", color: "#5f6368", icon: "⚪" },
-  spam:      { bg: "#f1f3f4", color: "#9aa0a6", icon: "⛔" }
+  urgente:   { bg: "#fce8e6", color: "#d93025", icon: "🔴", label: "Priorizado" },
+  util:      { bg: "#e8f0fe", color: "#1a73e8", icon: "🔵", label: "Útil" },
+  poco_util: { bg: "#f1f3f4", color: "#5f6368", icon: "⚪", label: "Poco útil" },
+  spam:      { bg: "#f1f3f4", color: "#9aa0a6", icon: "⛔", label: "Spam" }
 };
 const ACTION_LABELS = {
   responder:      "✍️ Responder",
@@ -627,7 +627,7 @@ function renderEmails() {
         "<div style=\"flex:1;min-width:0\">" +
           "<div style=\"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px\">" +
             "<span style=\"font-size:14px;font-weight:" + (isUrgent ? "700" : "500") + ";color:var(--text)\">" + esc(e.subject || "Sin asunto") + "</span>" +
-            "<span style=\"font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:" + clsFinal.bg + ";color:" + clsFinal.color + ";white-space:nowrap\">" + clsFinal.icon + " " + (correction ? correction.classification : e.classification) + "</span>" +
+            "<span style=\"font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:" + clsFinal.bg + ";color:" + clsFinal.color + ";white-space:nowrap\">" + clsFinal.icon + " " + (clsFinal.label || (correction ? correction.classification : e.classification)) + "</span>" +
             (hasDraft ? "<span style=\"font-size:10px;background:#e8f0fe;color:#1a73e8;padding:2px 7px;border-radius:4px;font-weight:600\">✍️ draft</span>" : "") +
           "</div>" +
           "<div style=\"font-size:12px;color:var(--muted);margin-bottom:4px\">" + esc(fromClean) + "</div>" +
@@ -643,7 +643,7 @@ function renderEmails() {
           "<div>" +
             "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Clasificación</label>" +
             "<select onchange=\"updateEmailInline('" + e.gmail_id + "','classification',this.value)\" style=\"width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit\">" +
-              "<option value=\"urgente\" " + (((correction ? correction.classification : e.classification)==="urgente") ? "selected" : "") + ">🔴 Urgente</option>" +
+              "<option value=\"urgente\" " + (((correction ? correction.classification : e.classification)==="urgente") ? "selected" : "") + ">🔴 Priorizado</option>" +
               "<option value=\"util\" " + (((correction ? correction.classification : e.classification)==="util") ? "selected" : "") + ">🔵 Útil</option>" +
               "<option value=\"poco_util\" " + (((correction ? correction.classification : e.classification)==="poco_util") ? "selected" : "") + ">⚪ Poco útil</option>" +
               "<option value=\"spam\" " + (((correction ? correction.classification : e.classification)==="spam") ? "selected" : "") + ">⛔ Spam</option>" +
@@ -684,11 +684,20 @@ async function updateEmailInline(gmailId, field, value) {
     draft_reply: email.draft_reply
   };
   correction[field] = value;
+
+  // Auto-set sensible action when classification changes
+  if (field === "classification") {
+    if (value === "urgente")    correction.action = "responder";
+    if (value === "util")       correction.action = "etiquetar_util";
+    if (value === "poco_util")  correction.action = "archivar";
+    if (value === "spam")       correction.action = "marcar_spam";
+  }
+
   email.user_correction = JSON.stringify(correction);
   try {
     await api("/emails/" + gmailId, "PATCH", { user_correction: JSON.stringify(correction) });
+    showToast("✓ Guardado");
     renderEmails();
-    // re-open the expanded row
     setTimeout(() => {
       const el = document.getElementById("exp-" + gmailId);
       if (el) el.style.display = "block";
