@@ -143,6 +143,7 @@
 <div class="tabs">
   <button class="tab-btn active" id="tab-tareas" onclick="switchTab('tareas')">Tareas</button>
   <button class="tab-btn" id="tab-cuentas" onclick="switchTab('cuentas')">Cuentas</button>
+  <button class="tab-btn" id="tab-emails" onclick="switchTab('emails')">Emails</button>
 </div>
 
 <div class="container">
@@ -186,6 +187,82 @@
     </div>
     <div id="taskList">
       <div style="text-align:center;padding:64px 0"><div class="spinner"></div><div style="color:var(--muted);font-size:14px">Conectando...</div></div>
+    </div>
+  </div>
+
+
+  <!-- ── EMAILS ── -->
+  <div id="view-emails" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="filter-chip active" id="ef-all"     onclick="setEmailFilter('pending',this)">Pendientes</button>
+        <button class="filter-chip" id="ef-urgente"  onclick="setEmailFilter('urgente',this)">🔴 Urgentes</button>
+        <button class="filter-chip" id="ef-util"     onclick="setEmailFilter('util',this)">🔵 Útiles</button>
+        <button class="filter-chip" id="ef-poco"     onclick="setEmailFilter('poco_util',this)">⚪ Poco útil</button>
+        <button class="filter-chip" id="ef-spam"     onclick="setEmailFilter('spam',this)">⛔ Spam</button>
+        <button class="filter-chip" id="ef-approved" onclick="setEmailFilter('approved',this)">✅ Ejecutados</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline" onclick="emailSelectAll()">Seleccionar todo</button>
+        <button class="btn-primary" onclick="executeSelected()">▶ Ejecutar seleccionados</button>
+      </div>
+    </div>
+
+    <div class="stats-row" style="margin-bottom:20px">
+      <div class="stat-card"><div class="num" id="e-total">0</div><div class="lbl">Total</div></div>
+      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-urgentes" style="color:#d93025">0</div><div class="lbl">Urgentes</div></div>
+      <div class="stat-card" style="border-left:3px solid #1a73e8"><div class="num" id="e-utiles" style="color:#1a73e8">0</div><div class="lbl">Útiles</div></div>
+      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-spam" style="color:#9aa0a6">0</div><div class="lbl">Spam</div></div>
+    </div>
+
+    <div class="col-headers" style="grid-template-columns:36px 1fr 200px 100px 120px 28px">
+      <span></span><span>Asunto</span><span>De</span><span>Clasificación</span><span>Acción</span><span></span>
+    </div>
+    <div id="emailList"><div style="text-align:center;padding:48px 0"><div class="spinner"></div></div></div>
+  </div>
+
+  <!-- Email detail modal -->
+  <div class="overlay" id="emailModal" style="display:none">
+    <div class="modal" style="max-width:600px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <h2 id="em-subject" style="font-size:18px;margin-bottom:4px"></h2>
+          <p id="em-from" style="font-size:13px;color:var(--muted)"></p>
+        </div>
+        <button class="btn-del" onclick="closeEmailModal()">✕</button>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px">
+        <p id="em-snippet" style="font-size:13px;color:var(--muted);line-height:1.6"></p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Clasificación</label>
+          <select id="em-classification" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit">
+            <option value="urgente">🔴 Urgente</option>
+            <option value="util">🔵 Útil</option>
+            <option value="poco_util">⚪ Poco útil</option>
+            <option value="spam">⛔ Spam</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Acción</label>
+          <select id="em-action" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit">
+            <option value="responder">✍️ Responder (borrador)</option>
+            <option value="etiquetar_util">🔵 Etiquetar útil</option>
+            <option value="archivar">📁 Archivar</option>
+            <option value="marcar_spam">⛔ Marcar spam</option>
+          </select>
+        </div>
+      </div>
+      <div id="em-draft-section">
+        <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Borrador de respuesta</label>
+        <textarea id="em-draft" style="width:100%;height:140px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;line-height:1.6;outline:none;resize:vertical;font-family:inherit" placeholder="Sin borrador..."></textarea>
+      </div>
+      <div style="font-size:12px;color:var(--muted2);margin:8px 0 16px;padding:8px 12px;background:var(--accent-light);border-radius:6px" id="em-reason"></div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeEmailModal()">Cancelar</button>
+        <button class="btn-save" onclick="saveEmailCorrection()">Guardar corrección</button>
+      </div>
     </div>
   </div>
 
@@ -249,13 +326,14 @@ const HEADERS={"Content-Type":"application/json","x-api-key":"tobin2024"};
 
 // ── Tab switching ──────────────────────────────────────────────
 function switchTab(tab) {
-  document.getElementById("view-tareas").style.display  = tab==="tareas"  ? "block" : "none";
-  document.getElementById("view-cuentas").style.display = tab==="cuentas" ? "block" : "none";
-  document.getElementById("tab-tareas").className  = "tab-btn" + (tab==="tareas"  ? " active" : "");
-  document.getElementById("tab-cuentas").className = "tab-btn" + (tab==="cuentas" ? " active" : "");
-  document.getElementById("refresh-btn").onclick   = tab==="tareas" ? fetchTasks : fetchCuentas;
-  document.getElementById("new-task-btn").style.display = tab==="tareas" ? "block" : "none";
-  if (tab==="cuentas") fetchCuentas();
+  ['tareas','cuentas','emails'].forEach(function(t) {
+    document.getElementById('view-'+t).style.display = t===tab ? 'block' : 'none';
+    document.getElementById('tab-'+t).className = 'tab-btn' + (t===tab ? ' active' : '');
+  });
+  document.getElementById('refresh-btn').onclick = tab==='tareas' ? fetchTasks : tab==='cuentas' ? fetchCuentas : fetchEmails;
+  document.getElementById('new-task-btn').style.display = tab==='tareas' ? 'block' : 'none';
+  if(tab==='emails') fetchEmails();
+  if(tab==='cuentas') fetchCuentas();
 }
 document.getElementById("refresh-btn").onclick = fetchTasks;
 document.getElementById("new-task-btn").onclick = showNewRow;
@@ -486,6 +564,142 @@ document.getElementById("cuotasModal").addEventListener("click",e=>{if(e.target=
 document.getElementById("confirmModal").addEventListener("click",e=>{if(e.target===document.getElementById("confirmModal"))closeConfirm();});
 
 fetchTasks();
+
+// ── EMAIL MODULE ──
+// Email module - inline in index.html
+
+const CLS_STYLE = {
+  urgente:   { bg: "#fce8e6", color: "#d93025", icon: "🔴" },
+  util:      { bg: "#e8f0fe", color: "#1a73e8", icon: "🔵" },
+  poco_util: { bg: "#f1f3f4", color: "#5f6368", icon: "⚪" },
+  spam:      { bg: "#f1f3f4", color: "#9aa0a6", icon: "⛔" }
+};
+const ACTION_LABELS = {
+  responder:      "✍️ Responder",
+  etiquetar_util: "🔵 Etiquetar",
+  archivar:       "📁 Archivar",
+  marcar_spam:    "⛔ Spam"
+};
+
+let allEmails = [], emailFilter = "pending", currentEmailId = null;
+
+async function fetchEmails() {
+  document.getElementById("emailList").innerHTML = '<div style="text-align:center;padding:48px 0"><div class="spinner"></div></div>';
+  try {
+    const d = await api("/emails?status=pending");
+    allEmails = d.emails || [];
+    renderEmails();
+  } catch(e) { showToast("Error cargando emails", "error"); }
+}
+
+function setEmailFilter(filter, btn) {
+  emailFilter = filter;
+  document.querySelectorAll("#view-emails .filter-chip").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderEmails();
+}
+
+function renderEmails() {
+  let rows = allEmails;
+  if (emailFilter !== "pending") rows = allEmails.filter(e => e.classification === emailFilter || (emailFilter === "approved" && e.status === "approved"));
+
+  document.getElementById("e-total").textContent    = allEmails.length;
+  document.getElementById("e-urgentes").textContent = allEmails.filter(e => e.classification === "urgente").length;
+  document.getElementById("e-utiles").textContent   = allEmails.filter(e => e.classification === "util").length;
+  document.getElementById("e-spam").textContent     = allEmails.filter(e => e.classification === "spam").length;
+
+  if (!rows.length) {
+    document.getElementById("emailList").innerHTML = '<div class="empty">No hay emails en esta categoría.</div>';
+    return;
+  }
+
+  document.getElementById("emailList").innerHTML = rows.map((e, i) => {
+    const cls = CLS_STYLE[e.classification] || CLS_STYLE.poco_util;
+    const correction = e.user_correction ? JSON.parse(e.user_correction) : null;
+    const clsFinal = correction ? (CLS_STYLE[correction.classification] || cls) : cls;
+    const actionLabel = ACTION_LABELS[correction?.action || e.action] || e.action;
+    const hasDraft = e.draft_reply || correction?.draft_reply;
+    const fromShort = (e.from_email || "").replace(/<.*>/, "").trim().slice(0, 30);
+
+    return `<div class="task" style="grid-template-columns:36px 1fr 200px 100px 120px 28px;animation-delay:${i*0.01}s;cursor:pointer" onclick="openEmailModal('${e.gmail_id}')">
+      <input type="checkbox" class="email-cb" data-id="${e.gmail_id}" onclick="event.stopPropagation()" style="width:16px;height:16px;cursor:pointer;margin:auto" />
+      <div>
+        <div style="font-size:14px;font-weight:${e.classification==='urgente'?'700':'500'};color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(e.subject||"Sin asunto")}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.snippet||"")}</div>
+      </div>
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(fromShort)}</span>
+      <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${clsFinal.bg};color:${clsFinal.color};white-space:nowrap">${clsFinal.icon} ${correction?.classification || e.classification}</span>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:11px;color:var(--muted)">${actionLabel}</span>
+        ${hasDraft ? '<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;padding:1px 5px;border-radius:4px;font-weight:600">draft</span>' : ""}
+      </div>
+      <button class="btn-del" onclick="event.stopPropagation();skipEmail('${e.gmail_id}')">✕</button>
+    </div>`;
+  }).join("");
+}
+
+function emailSelectAll() {
+  const cbs = document.querySelectorAll(".email-cb");
+  const allChecked = [...cbs].every(c => c.checked);
+  cbs.forEach(c => c.checked = !allChecked);
+}
+
+async function executeSelected() {
+  const selected = [...document.querySelectorAll(".email-cb:checked")].map(c => c.dataset.id);
+  if (!selected.length) { showToast("Selecciona al menos un email", "error"); return; }
+  showToast("Ejecutando " + selected.length + " acciones...");
+  try {
+    const r = await api("/emails/execute", "POST", { gmailIds: selected });
+    showToast(`✓ ${r.done} ejecutados`);
+    allEmails = allEmails.map(e => selected.includes(e.gmail_id) ? {...e, status:"approved"} : e);
+    renderEmails();
+  } catch(e) { showToast(e.message, "error"); }
+}
+
+async function skipEmail(gmailId) {
+  await api("/emails/skip", "POST", { gmailIds: [gmailId] });
+  allEmails = allEmails.filter(e => e.gmail_id !== gmailId);
+  renderEmails();
+  showToast("Email omitido");
+}
+
+function openEmailModal(gmailId) {
+  const email = allEmails.find(e => e.gmail_id === gmailId);
+  if (!email) return;
+  const correction = email.user_correction ? JSON.parse(email.user_correction) : null;
+  currentEmailId = gmailId;
+  document.getElementById("em-subject").textContent = email.subject || "Sin asunto";
+  document.getElementById("em-from").textContent    = email.from_email || "";
+  document.getElementById("em-snippet").textContent = email.snippet || "";
+  document.getElementById("em-classification").value = correction?.classification || email.classification || "poco_util";
+  document.getElementById("em-action").value         = correction?.action || email.action || "archivar";
+  document.getElementById("em-draft").value          = correction?.draft_reply || email.draft_reply || "";
+  document.getElementById("em-reason").textContent   = "🤖 " + (email.ai_reason || "Sin explicación");
+  document.getElementById("emailModal").style.display = "flex";
+}
+
+function closeEmailModal() { document.getElementById("emailModal").style.display = "none"; currentEmailId = null; }
+
+async function saveEmailCorrection() {
+  if (!currentEmailId) return;
+  const correction = {
+    classification: document.getElementById("em-classification").value,
+    action:         document.getElementById("em-action").value,
+    draft_reply:    document.getElementById("em-draft").value || null
+  };
+  try {
+    await api(`/emails/${currentEmailId}`, "PATCH", { user_correction: JSON.stringify(correction) });
+    const email = allEmails.find(e => e.gmail_id === currentEmailId);
+    if (email) email.user_correction = JSON.stringify(correction);
+    closeEmailModal(); renderEmails(); showToast("Corrección guardada ✓");
+  } catch(e) { showToast(e.message, "error"); }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  const modal = document.getElementById("emailModal");
+  if (modal) modal.addEventListener("click", e => { if(e.target === modal) closeEmailModal(); });
+});
+
 </script>
 </body>
 </html>
