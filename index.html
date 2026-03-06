@@ -215,9 +215,7 @@
       <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-spam" style="color:#9aa0a6">0</div><div class="lbl">Spam</div></div>
     </div>
 
-    <div class="col-headers" style="grid-template-columns:36px 1fr 200px 100px 120px 28px">
-      <span></span><span>Asunto</span><span>De</span><span>Clasificación</span><span>Acción</span><span></span>
-    </div>
+    <!-- email col headers removed, now inline -->
     <div id="emailList"><div style="text-align:center;padding:48px 0"><div class="spinner"></div></div></div>
   </div>
 
@@ -601,7 +599,8 @@ function setEmailFilter(filter, btn) {
 
 function renderEmails() {
   let rows = allEmails;
-  if (emailFilter !== "pending") rows = allEmails.filter(e => e.classification === emailFilter || (emailFilter === "approved" && e.status === "approved"));
+  if (emailFilter === "approved") rows = allEmails.filter(e => e.status === "approved");
+  else if (emailFilter !== "pending") rows = allEmails.filter(e => e.classification === emailFilter && e.status === "pending");
 
   document.getElementById("e-total").textContent    = allEmails.length;
   document.getElementById("e-urgentes").textContent = allEmails.filter(e => e.classification === "urgente").length;
@@ -609,7 +608,7 @@ function renderEmails() {
   document.getElementById("e-spam").textContent     = allEmails.filter(e => e.classification === "spam").length;
 
   if (!rows.length) {
-    document.getElementById("emailList").innerHTML = '<div class="empty">No hay emails en esta categoría.</div>';
+    document.getElementById("emailList").innerHTML = "<div class=\"empty\">No hay emails en esta categoría.</div>";
     return;
   }
 
@@ -617,25 +616,94 @@ function renderEmails() {
     const cls = CLS_STYLE[e.classification] || CLS_STYLE.poco_util;
     const correction = e.user_correction ? JSON.parse(e.user_correction) : null;
     const clsFinal = correction ? (CLS_STYLE[correction.classification] || cls) : cls;
-    const actionLabel = ACTION_LABELS[correction?.action || e.action] || e.action;
-    const hasDraft = e.draft_reply || correction?.draft_reply;
-    const fromShort = (e.from_email || "").replace(/<.*>/, "").trim().slice(0, 30);
+    const actionLabel = ACTION_LABELS[correction ? correction.action : e.action] || e.action;
+    const hasDraft = e.draft_reply || (correction && correction.draft_reply);
+    const fromClean = (e.from_email || "").replace(/<.*>/, "").trim();
+    const isUrgent = e.classification === "urgente";
 
-    return `<div class="task" style="grid-template-columns:36px 1fr 200px 100px 120px 28px;animation-delay:${i*0.01}s;cursor:pointer" onclick="openEmailModal('${e.gmail_id}')">
-      <input type="checkbox" class="email-cb" data-id="${e.gmail_id}" onclick="event.stopPropagation()" style="width:16px;height:16px;cursor:pointer;margin:auto" />
-      <div>
-        <div style="font-size:14px;font-weight:${e.classification==='urgente'?'700':'500'};color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(e.subject||"Sin asunto")}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(e.snippet||"")}</div>
-      </div>
-      <span style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(fromShort)}</span>
-      <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${clsFinal.bg};color:${clsFinal.color};white-space:nowrap">${clsFinal.icon} ${correction?.classification || e.classification}</span>
-      <div style="display:flex;align-items:center;gap:4px">
-        <span style="font-size:11px;color:var(--muted)">${actionLabel}</span>
-        ${hasDraft ? '<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;padding:1px 5px;border-radius:4px;font-weight:600">draft</span>' : ""}
-      </div>
-      <button class="btn-del" onclick="event.stopPropagation();skipEmail('${e.gmail_id}')">✕</button>
-    </div>`;
+    return "<div style=\"background:var(--surface);border:1px solid " + (isUrgent ? "#f5c6c3" : "var(--border)") + ";border-left:3px solid " + clsFinal.color + ";border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-sm);animation:fadeUp 0.2s ease both;animation-delay:" + (i*0.02) + "s\">" +
+      "<div style=\"display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer\" onclick=\"toggleEmail('" + e.gmail_id + "')\">" +
+        "<input type=\"checkbox\" class=\"email-cb\" data-id=\"" + e.gmail_id + "\" onclick=\"event.stopPropagation()\" style=\"width:16px;height:16px;cursor:pointer;margin-top:2px;flex-shrink:0\" />" +
+        "<div style=\"flex:1;min-width:0\">" +
+          "<div style=\"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px\">" +
+            "<span style=\"font-size:14px;font-weight:" + (isUrgent ? "700" : "500") + ";color:var(--text)\">" + esc(e.subject || "Sin asunto") + "</span>" +
+            "<span style=\"font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:" + clsFinal.bg + ";color:" + clsFinal.color + ";white-space:nowrap\">" + clsFinal.icon + " " + (correction ? correction.classification : e.classification) + "</span>" +
+            (hasDraft ? "<span style=\"font-size:10px;background:#e8f0fe;color:#1a73e8;padding:2px 7px;border-radius:4px;font-weight:600\">✍️ draft</span>" : "") +
+          "</div>" +
+          "<div style=\"font-size:12px;color:var(--muted);margin-bottom:4px\">" + esc(fromClean) + "</div>" +
+          "<div style=\"font-size:12px;color:var(--muted2);line-height:1.4\">" + esc((e.snippet || "").slice(0, 120)) + (e.snippet && e.snippet.length > 120 ? "..." : "") + "</div>" +
+        "</div>" +
+        "<div style=\"display:flex;align-items:center;gap:8px;flex-shrink:0\">" +
+          "<span style=\"font-size:11px;color:var(--muted)\">" + actionLabel + "</span>" +
+          "<button class=\"btn-del\" onclick=\"event.stopPropagation();skipEmail('" + e.gmail_id + "')\" style=\"flex-shrink:0\">✕</button>" +
+        "</div>" +
+      "</div>" +
+      "<div id=\"exp-" + e.gmail_id + "\" style=\"display:none;border-top:1px solid var(--border);padding:16px;background:var(--surface2)\">" +
+        "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px\">" +
+          "<div>" +
+            "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Clasificación</label>" +
+            "<select onchange=\"updateEmailInline('" + e.gmail_id + "','classification',this.value)\" style=\"width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit\">" +
+              "<option value=\"urgente\" " + (((correction ? correction.classification : e.classification)==="urgente") ? "selected" : "") + ">🔴 Urgente</option>" +
+              "<option value=\"util\" " + (((correction ? correction.classification : e.classification)==="util") ? "selected" : "") + ">🔵 Útil</option>" +
+              "<option value=\"poco_util\" " + (((correction ? correction.classification : e.classification)==="poco_util") ? "selected" : "") + ">⚪ Poco útil</option>" +
+              "<option value=\"spam\" " + (((correction ? correction.classification : e.classification)==="spam") ? "selected" : "") + ">⛔ Spam</option>" +
+            "</select>" +
+          "</div>" +
+          "<div>" +
+            "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Acción</label>" +
+            "<select onchange=\"updateEmailInline('" + e.gmail_id + "','action',this.value)\" style=\"width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit\">" +
+              "<option value=\"responder\" " + (((correction ? correction.action : e.action)==="responder") ? "selected" : "") + ">✍️ Responder</option>" +
+              "<option value=\"etiquetar_util\" " + (((correction ? correction.action : e.action)==="etiquetar_util") ? "selected" : "") + ">🔵 Etiquetar útil</option>" +
+              "<option value=\"archivar\" " + (((correction ? correction.action : e.action)==="archivar") ? "selected" : "") + ">📁 Archivar</option>" +
+              "<option value=\"marcar_spam\" " + (((correction ? correction.action : e.action)==="marcar_spam") ? "selected" : "") + ">⛔ Spam</option>" +
+            "</select>" +
+          "</div>" +
+        "</div>" +
+        (hasDraft ? "<div><label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Borrador de respuesta</label><textarea onblur=\"updateEmailInline('" + e.gmail_id + "','draft_reply',this.value)\" style=\"width:100%;height:120px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;line-height:1.6;outline:none;resize:vertical;font-family:inherit\">" + esc(correction ? (correction.draft_reply || "") : (e.draft_reply || "")) + "</textarea></div>" : "") +
+        (e.ai_reason ? "<div style=\"font-size:12px;color:var(--muted2);margin-top:10px;padding:8px 12px;background:var(--accent-light);border-radius:6px\">🤖 " + esc(e.ai_reason) + "</div>" : "") +
+        "<div style=\"display:flex;gap:8px;margin-top:12px\">" +
+          "<button class=\"btn-outline\" style=\"font-size:12px;padding:6px 14px\" onclick=\"skipEmail('" + e.gmail_id + "')\">Omitir</button>" +
+          "<button class=\"btn-primary\" style=\"font-size:12px;padding:6px 14px\" onclick=\"executeSingle('" + e.gmail_id + "')\">▶ Ejecutar este</button>" +
+        "</div>" +
+      "</div>" +
+    "</div>";
   }).join("");
+}
+
+function toggleEmail(gmailId) {
+  const el = document.getElementById("exp-" + gmailId);
+  if (el) el.style.display = el.style.display === "none" ? "block" : "none";
+}
+
+async function updateEmailInline(gmailId, field, value) {
+  const email = allEmails.find(e => e.gmail_id === gmailId);
+  if (!email) return;
+  const correction = email.user_correction ? JSON.parse(email.user_correction) : {
+    classification: email.classification,
+    action: email.action,
+    draft_reply: email.draft_reply
+  };
+  correction[field] = value;
+  email.user_correction = JSON.stringify(correction);
+  try {
+    await api("/emails/" + gmailId, "PATCH", { user_correction: JSON.stringify(correction) });
+    renderEmails();
+    // re-open the expanded row
+    setTimeout(() => {
+      const el = document.getElementById("exp-" + gmailId);
+      if (el) el.style.display = "block";
+    }, 50);
+  } catch(e) { showToast(e.message, "error"); }
+}
+
+async function executeSingle(gmailId) {
+  showToast("Ejecutando...");
+  try {
+    const r = await api("/emails/execute", "POST", { gmailIds: [gmailId] });
+    showToast("✓ Ejecutado");
+    allEmails = allEmails.map(e => e.gmail_id === gmailId ? {...e, status:"approved"} : e);
+    renderEmails();
+  } catch(e) { showToast(e.message, "error"); }
 }
 
 function emailSelectAll() {
