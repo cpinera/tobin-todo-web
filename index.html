@@ -585,7 +585,11 @@ async function fetchEmails() {
   document.getElementById("emailList").innerHTML = '<div style="text-align:center;padding:48px 0"><div class="spinner"></div></div>';
   try {
     const d = await api("/emails?status=pending");
-    allEmails = d.emails || [];
+    // Filter out emails sent by Cristóbal himself
+    allEmails = (d.emails || []).filter(e => {
+      const from = (e.from_email || "").toLowerCase();
+      return !from.includes("cristobal@tantauco.vc") && !from.includes("cristobalpinera");
+    });
     renderEmails();
   } catch(e) { showToast("Error cargando emails", "error"); }
 }
@@ -728,7 +732,8 @@ async function executeSingle(gmailId) {
   try {
     const r = await api("/emails/execute", "POST", { gmailIds: [gmailId] });
     showToast("✓ Ejecutado");
-    allEmails = allEmails.map(e => e.gmail_id === gmailId ? {...e, status:"approved"} : e);
+    // Remove from pending list immediately
+    allEmails = allEmails.filter(e => e.gmail_id !== gmailId);
     renderEmails();
   } catch(e) { showToast(e.message, "error"); }
 }
@@ -746,7 +751,8 @@ async function executeSelected() {
   try {
     const r = await api("/emails/execute", "POST", { gmailIds: selected });
     showToast(`✓ ${r.done} ejecutados`);
-    allEmails = allEmails.map(e => selected.includes(e.gmail_id) ? {...e, status:"approved"} : e);
+    // Remove executed from pending list immediately
+    allEmails = allEmails.filter(e => !selected.includes(e.gmail_id));
     renderEmails();
   } catch(e) { showToast(e.message, "error"); }
 }
