@@ -598,17 +598,20 @@ async function executeSelected() {
   var selected = Array.from(document.querySelectorAll(".email-cb:checked")).map(function(c) { return c.dataset.id; });
   if (!selected.length) { showToast("Selecciona al menos un email", "error"); return; }
   var btn = document.getElementById("btn-exec-selected");
-  btn.textContent = "Ejecutando...";
   btn.disabled = true;
+  btn.style.opacity = "0.7";
+  var countEl = document.getElementById("sel-count");
+  if (countEl) countEl.textContent = "...";
   try {
     var r = await api("/emails/execute", "POST", { gmailIds: selected });
-    showToast(r.done + " ejecutados correctamente");
+    showToast((r.done || selected.length) + " ejecutados correctamente");
     allEmails = allEmails.filter(function(e) { return !selected.includes(e.gmail_id); });
     renderEmails();
   } catch(ex) {
-    showToast(ex.message, "error");
+    showToast("Error: " + ex.message, "error");
   } finally {
     btn.disabled = false;
+    btn.style.opacity = "1";
     updateSelectionUI();
   }
 }
