@@ -200,7 +200,11 @@
         <button class="filter-chip"        id="ef-auto"       onclick="setEmailFilter('auto_reply',this)">Resp. Automatica</button>
         <button class="filter-chip"        id="ef-spam"       onclick="setEmailFilter('spam',this)">Spam</button>
       </div>
-      <button class="btn-outline" onclick="refreshEmails()">Actualizar</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline" onclick="emailSelectAll()">Seleccionar todo</button>
+        <button class="btn-primary" id="btn-exec-selected" style="display:none" onclick="executeSelected()">Ejecutar seleccionados (<span id="sel-count">0</span>)</button>
+        <button class="btn-outline" onclick="refreshEmails()">Actualizar</button>
+      </div>
     </div>
     <div class="stats-row" style="margin-bottom:20px;grid-template-columns:repeat(3,1fr)">
       <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-priorizado" style="color:#d93025">0</div><div class="lbl">Priorizado</div></div>
@@ -538,6 +542,12 @@ var CLS_CFG = {
 
 var allEmails = [], emailFilter = "all", draftEmailId = null;
 
+function decodeHtmlEntities(str) {
+  var txt = document.createElement("textarea");
+  txt.innerHTML = str;
+  return txt.value;
+}
+
 async function fetchEmails() {
   document.getElementById("emailList").innerHTML = "<div style=\"text-align:center;padding:48px 0\"><div class=\"spinner\"></div></div>";
   try {
@@ -564,12 +574,45 @@ function getEffectiveCls(e) {
   return (corr && corr.classification) ? corr.classification : (e.classification || "spam");
 }
 
+function updateSelectionUI() {
+  var checked = document.querySelectorAll(".email-cb:checked");
+  var btn = document.getElementById("btn-exec-selected");
+  var countEl = document.getElementById("sel-count");
+  if (checked.length > 0) {
+    btn.style.display = "inline-flex";
+    countEl.textContent = checked.length;
+  } else {
+    btn.style.display = "none";
+  }
+}
+
+function emailSelectAll() {
+  var cbs = document.querySelectorAll(".email-cb");
+  var allChecked = Array.from(cbs).every(function(c) { return c.checked; });
+  cbs.forEach(function(c) { c.checked = !allChecked; });
+  updateSelectionUI();
+}
+
+async function executeSelected() {
+  var selected = Array.from(document.querySelectorAll(".email-cb:checked")).map(function(c) { return c.dataset.id; });
+  if (!selected.length) { showToast("Selecciona al menos un email", "error"); return; }
+  showToast("Ejecutando " + selected.length + " acciones...");
+  try {
+    var r = await api("/emails/execute", "POST", { gmailIds: selected });
+    showToast(r.done + " ejecutados correctamente");
+    allEmails = allEmails.filter(function(e) { return !selected.includes(e.gmail_id); });
+    renderEmails();
+  } catch(ex) { showToast(ex.message, "error"); }
+}
+
 function makeEmailCard(e, i) {
-  var cls  = getEffectiveCls(e);
-  var cfg  = CLS_CFG[cls] || CLS_CFG.spam;
-  var corr = e.user_correction ? JSON.parse(e.user_correction) : null;
+  var cls   = getEffectiveCls(e);
+  var cfg   = CLS_CFG[cls] || CLS_CFG.spam;
+  var corr  = e.user_correction ? JSON.parse(e.user_correction) : null;
   var draft = (corr && corr.draft_reply) ? corr.draft_reply : (e.draft_reply || "");
-  var fromClean = (e.from_email || "").replace(/<.*>/, "").trim();
+  var fromClean = decodeHtmlEntities((e.from_email || "").replace(/<.*>/, "").trim());
+  var snippet   = decodeHtmlEntities(e.snippet || "");
+  var subject   = decodeHtmlEntities(e.subject || "Sin asunto");
   var id = e.gmail_id;
 
   var el = document.createElement("div");
@@ -577,18 +620,27 @@ function makeEmailCard(e, i) {
 
   // Header row
   var header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer";
-  header.onclick = function() { toggleEmail(id); };
+  header.style.cssText = "display:flex;align-items:flex-start;gap:12px;padding:14px 16px";
 
+  // Checkbox
+  var cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.className = "email-cb";
+  cb.dataset.id = id;
+  cb.style.cssText = "width:16px;height:16px;cursor:pointer;margin-top:3px;flex-shrink:0";
+  cb.addEventListener("change", updateSelectionUI);
+
+  // Clickable info area
   var info = document.createElement("div");
-  info.style.cssText = "flex:1;min-width:0";
+  info.style.cssText = "flex:1;min-width:0;cursor:pointer";
+  info.onclick = function() { toggleEmail(id); };
 
   var titleRow = document.createElement("div");
   titleRow.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px";
 
   var subjectEl = document.createElement("span");
   subjectEl.style.cssText = "font-size:14px;font-weight:600;color:var(--text)";
-  subjectEl.textContent = e.subject || "Sin asunto";
+  subjectEl.textContent = subject;
 
   var badge = document.createElement("span");
   badge.style.cssText = "font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:" + cfg.bg + ";color:" + cfg.color;
@@ -610,12 +662,12 @@ function makeEmailCard(e, i) {
 
   var snippetEl = document.createElement("div");
   snippetEl.style.cssText = "font-size:12px;color:var(--muted2);line-height:1.4";
-  var snip = e.snippet || "";
-  snippetEl.textContent = snip.slice(0, 120) + (snip.length > 120 ? "..." : "");
+  snippetEl.textContent = snippet.slice(0, 120) + (snippet.length > 120 ? "..." : "");
 
   info.appendChild(titleRow);
   info.appendChild(fromEl);
   info.appendChild(snippetEl);
+  header.appendChild(cb);
   header.appendChild(info);
   el.appendChild(header);
 
@@ -633,7 +685,7 @@ function makeEmailCard(e, i) {
   if (e.ai_reason) {
     var reasonEl = document.createElement("div");
     reasonEl.style.cssText = "font-size:12px;color:var(--muted2);padding:7px 12px;background:var(--accent-light);border-radius:6px;margin-bottom:12px";
-    reasonEl.textContent = "IA: " + e.ai_reason;
+    reasonEl.textContent = "IA: " + decodeHtmlEntities(e.ai_reason);
     panel.appendChild(reasonEl);
   }
 
@@ -687,6 +739,9 @@ function renderEmails() {
   else                                   rows = allEmails;
 
   var list = document.getElementById("emailList");
+  document.getElementById("btn-exec-selected").style.display = "none";
+  document.getElementById("sel-count").textContent = "0";
+
   if (!rows.length) {
     list.innerHTML = "<div class=\"empty\">No hay emails en esta categoria.</div>";
     return;
@@ -724,7 +779,7 @@ async function doMoveEmail(gmailId, newCls) {
     }
     renderEmails();
     var cfg = CLS_CFG[newCls];
-    showToast("Movido a " + (cfg ? cfg.label : newCls) + " correctamente");
+    showToast("Movido a " + (cfg ? cfg.label : newCls));
   } catch(ex) { showToast(ex.message, "error"); }
 }
 
@@ -751,8 +806,8 @@ function openDraft(gmailId) {
   if (!email) return;
   var corr = email.user_correction ? JSON.parse(email.user_correction) : null;
   draftEmailId = gmailId;
-  document.getElementById("dm-subject").textContent = email.subject || "Sin asunto";
-  document.getElementById("dm-from").textContent    = (email.from_email || "").replace(/<.*>/, "").trim();
+  document.getElementById("dm-subject").textContent = decodeHtmlEntities(email.subject || "Sin asunto");
+  document.getElementById("dm-from").textContent    = decodeHtmlEntities((email.from_email || "").replace(/<.*>/, "").trim());
   document.getElementById("dm-draft").value         = (corr && corr.draft_reply) ? corr.draft_reply : (email.draft_reply || "");
   document.getElementById("draftModal").style.display = "flex";
 }
