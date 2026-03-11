@@ -670,6 +670,38 @@ function makeEmailCard(e, i) {
   info.appendChild(snippetEl);
   header.appendChild(cb);
   header.appendChild(info);
+
+  // Top-right toggle: star for priorizado, spam-mark for spam
+  if (cls === "priorizado") {
+    var starBtn = document.createElement("button");
+    var isStarred = corr && corr.starred;
+    starBtn.id = "star-" + id;
+    starBtn.style.cssText = "background:none;border:none;font-size:20px;cursor:pointer;padding:0 4px;flex-shrink:0;line-height:1;opacity:" + (isStarred ? "1" : "0.25") + ";transition:opacity 0.15s";
+    starBtn.textContent = "★";
+    starBtn.title = isStarred ? "Marcado con estrella" : "Marcar con estrella al ejecutar";
+    starBtn.onclick = function(ev) { ev.stopPropagation(); toggleStar(id); };
+    header.appendChild(starBtn);
+  }
+
+  if (cls === "spam") {
+    var spamToggle = document.createElement("div");
+    var isSpamMark = corr && corr.markAsSpam;
+    spamToggle.id = "spamtog-" + id;
+    spamToggle.title = isSpamMark ? "Marcar como spam en Gmail (activo)" : "Tambien marcar como spam en Gmail";
+    spamToggle.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;padding:2px 4px";
+    var spamIcon = document.createElement("span");
+    spamIcon.id = "spamicon-" + id;
+    spamIcon.style.cssText = "font-size:16px;opacity:" + (isSpamMark ? "1" : "0.25") + ";transition:opacity 0.15s";
+    spamIcon.textContent = "🚫";
+    var spamLabel = document.createElement("span");
+    spamLabel.style.cssText = "font-size:9px;color:var(--muted2);white-space:nowrap";
+    spamLabel.textContent = isSpamMark ? "spam Gmail" : "+ spam Gmail";
+    spamToggle.appendChild(spamIcon);
+    spamToggle.appendChild(spamLabel);
+    spamToggle.onclick = function(ev) { ev.stopPropagation(); toggleSpamMark(id); };
+    header.appendChild(spamToggle);
+  }
+
   el.appendChild(header);
 
   // Expanded panel
@@ -811,6 +843,46 @@ function openDraft(gmailId) {
   document.getElementById("dm-from").textContent    = decodeHtmlEntities((email.from_email || "").replace(/<.*>/, "").trim());
   document.getElementById("dm-draft").value         = (corr && corr.draft_reply) ? corr.draft_reply : (email.draft_reply || "");
   document.getElementById("draftModal").style.display = "flex";
+}
+
+function toggleSpamMark(gmailId) {
+  var email = allEmails.find(function(e) { return e.gmail_id === gmailId; });
+  if (!email) return;
+  var corr = email.user_correction ? JSON.parse(email.user_correction) : { classification: "spam", action: "marcar_spam" };
+  corr.markAsSpam = !corr.markAsSpam;
+  email.user_correction = JSON.stringify(corr);
+
+  var icon = document.getElementById("spamicon-" + gmailId);
+  var tog  = document.getElementById("spamtog-" + gmailId);
+  if (icon) icon.style.opacity = corr.markAsSpam ? "1" : "0.25";
+  if (tog)  tog.querySelector("span:last-child").textContent = corr.markAsSpam ? "spam Gmail" : "+ spam Gmail";
+  if (tog)  tog.title = corr.markAsSpam ? "Marcar como spam en Gmail (activo)" : "Tambien marcar como spam en Gmail";
+
+  api("/emails/" + gmailId, "PATCH", { user_correction: JSON.stringify(corr) })
+    .then(function() { showToast(corr.markAsSpam ? "Se marcara como spam en Gmail al ejecutar" : "Solo se borrara"); })
+    .catch(function(ex) { showToast(ex.message, "error"); });
+}
+
+function toggleStar(gmailId) {
+  var email = allEmails.find(function(e) { return e.gmail_id === gmailId; });
+  if (!email) return;
+  var corr = email.user_correction ? JSON.parse(email.user_correction) : { classification: "priorizado", action: "estrella" };
+  corr.starred = !corr.starred;
+  // If starred, action is estrella; if unstarred revert to no action (just keep priorizado)
+  corr.action = corr.starred ? "estrella" : "none";
+  email.user_correction = JSON.stringify(corr);
+
+  // Update button visually
+  var btn = document.getElementById("star-" + gmailId);
+  if (btn) {
+    btn.style.opacity = corr.starred ? "1" : "0.25";
+    btn.title = corr.starred ? "Marcado con estrella" : "Marcar con estrella al ejecutar";
+  }
+
+  // Save to backend
+  api("/emails/" + gmailId, "PATCH", { user_correction: JSON.stringify(corr) })
+    .then(function() { showToast(corr.starred ? "Se marcara con estrella al ejecutar" : "Estrella removida"); })
+    .catch(function(ex) { showToast(ex.message, "error"); });
 }
 
 async function scanGmail() {
