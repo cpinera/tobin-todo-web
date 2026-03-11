@@ -200,10 +200,11 @@
         <button class="filter-chip"        id="ef-auto"       onclick="setEmailFilter('auto_reply',this)">Resp. Automatica</button>
         <button class="filter-chip"        id="ef-spam"       onclick="setEmailFilter('spam',this)">Spam</button>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-outline" onclick="emailSelectAll()">Seleccionar todo</button>
         <button class="btn-primary" id="btn-exec-selected" style="display:none" onclick="executeSelected()">Ejecutar seleccionados (<span id="sel-count">0</span>)</button>
         <button class="btn-outline" onclick="refreshEmails()">Actualizar</button>
+        <button class="btn-primary" id="btn-scan" onclick="scanGmail()" style="background:#1e8e3e">Revisar Gmail</button>
       </div>
     </div>
     <div class="stats-row" style="margin-bottom:20px;grid-template-columns:repeat(3,1fr)">
@@ -810,6 +811,22 @@ function openDraft(gmailId) {
   document.getElementById("dm-from").textContent    = decodeHtmlEntities((email.from_email || "").replace(/<.*>/, "").trim());
   document.getElementById("dm-draft").value         = (corr && corr.draft_reply) ? corr.draft_reply : (email.draft_reply || "");
   document.getElementById("draftModal").style.display = "flex";
+}
+
+async function scanGmail() {
+  var btn = document.getElementById("btn-scan");
+  btn.textContent = "Escaneando...";
+  btn.disabled = true;
+  try {
+    var r = await api("/emails/scan-now", "POST", {});
+    showToast("Scan completo: " + r.count + " emails (" + (r.priorizado||0) + " priorizado, " + (r.autoReply||0) + " auto-resp, " + (r.spam||0) + " spam)");
+    await fetchEmails();
+  } catch(ex) {
+    showToast("Error en scan: " + ex.message, "error");
+  } finally {
+    btn.textContent = "Revisar Gmail";
+    btn.disabled = false;
+  }
 }
 
 function closeDraftModal() {
