@@ -195,71 +195,40 @@
   <div id="view-emails" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="filter-chip active" id="ef-all"     onclick="setEmailFilter('pending',this)">Todos</button>
-        <button class="filter-chip" id="ef-urgente"  onclick="setEmailFilter('urgente',this)">🔴 Priorizado</button>
-        <button class="filter-chip" id="ef-util"     onclick="setEmailFilter('util',this)">🔵 Útil</button>
-        <button class="filter-chip" id="ef-poco"     onclick="setEmailFilter('poco_util',this)">⚪ Poco útil</button>
-        <button class="filter-chip" id="ef-spam"     onclick="setEmailFilter('spam',this)">⛔ Spam</button>
-        <button class="filter-chip" id="ef-approved" onclick="setEmailFilter('approved',this)">✅ Ejecutados</button>
+        <button class="filter-chip active" id="ef-all"        onclick="setEmailFilter('all',this)">Todos</button>
+        <button class="filter-chip"        id="ef-priorizado" onclick="setEmailFilter('priorizado',this)">🔴 Priorizado</button>
+        <button class="filter-chip"        id="ef-auto"       onclick="setEmailFilter('auto_reply',this)">✍️ Resp. Automática</button>
+        <button class="filter-chip"        id="ef-spam"       onclick="setEmailFilter('spam',this)">⛔ Spam</button>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn-outline" onclick="emailSelectAll()">Seleccionar todo</button>
-        <button class="btn-primary" onclick="executeSelected()">▶ Ejecutar seleccionados</button>
+        <button class="btn-outline" onclick="refreshEmails()">↺ Actualizar</button>
       </div>
     </div>
 
-    <div class="stats-row" style="margin-bottom:20px">
-      <div class="stat-card"><div class="num" id="e-total">0</div><div class="lbl">Total</div></div>
-      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-urgentes" style="color:#d93025">0</div><div class="lbl">Priorizado</div></div>
-      <div class="stat-card" style="border-left:3px solid #1a73e8"><div class="num" id="e-utiles" style="color:#1a73e8">0</div><div class="lbl">Útiles</div></div>
-      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-spam" style="color:#9aa0a6">0</div><div class="lbl">Spam</div></div>
+    <div class="stats-row" style="margin-bottom:20px;grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card" style="border-left:3px solid #d93025"><div class="num" id="e-priorizado" style="color:#d93025">0</div><div class="lbl">Priorizado</div></div>
+      <div class="stat-card" style="border-left:3px solid #1a73e8"><div class="num" id="e-auto" style="color:#1a73e8">0</div><div class="lbl">Resp. Automática</div></div>
+      <div class="stat-card" style="border-left:3px solid #9aa0a6"><div class="num" id="e-spam" style="color:#9aa0a6">0</div><div class="lbl">Spam</div></div>
     </div>
 
-    <!-- email col headers removed, now inline -->
     <div id="emailList"><div style="text-align:center;padding:48px 0"><div class="spinner"></div></div></div>
   </div>
 
-  <!-- Email detail modal -->
-  <div class="overlay" id="emailModal" style="display:none">
-    <div class="modal" style="max-width:600px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+  <!-- Draft edit modal -->
+  <div class="overlay" id="draftModal" style="display:none">
+    <div class="modal" style="max-width:560px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
         <div>
-          <h2 id="em-subject" style="font-size:18px;margin-bottom:4px"></h2>
-          <p id="em-from" style="font-size:13px;color:var(--muted)"></p>
+          <h2 style="font-size:17px;margin-bottom:3px" id="dm-subject"></h2>
+          <p style="font-size:12px;color:var(--muted)" id="dm-from"></p>
         </div>
-        <button class="btn-del" onclick="closeEmailModal()">✕</button>
+        <button class="btn-del" onclick="closeDraftModal()">✕</button>
       </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px">
-        <p id="em-snippet" style="font-size:13px;color:var(--muted);line-height:1.6"></p>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Clasificación</label>
-          <select id="em-classification" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit">
-            <option value="urgente">🔴 Priorizado</option>
-            <option value="util">🔵 Útil</option>
-            <option value="poco_util">⚪ Poco útil</option>
-            <option value="spam">⛔ Spam</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Acción</label>
-          <select id="em-action" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit">
-            <option value="responder">✍️ Responder (borrador)</option>
-            <option value="etiquetar_util">🔵 Etiquetar útil</option>
-            <option value="archivar">📁 Archivar</option>
-            <option value="marcar_spam">⛔ Marcar spam</option>
-          </select>
-        </div>
-      </div>
-      <div id="em-draft-section">
-        <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Borrador de respuesta</label>
-        <textarea id="em-draft" style="width:100%;height:140px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;line-height:1.6;outline:none;resize:vertical;font-family:inherit" placeholder="Sin borrador..."></textarea>
-      </div>
-      <div style="font-size:12px;color:var(--muted2);margin:8px 0 16px;padding:8px 12px;background:var(--accent-light);border-radius:6px" id="em-reason"></div>
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="closeEmailModal()">Cancelar</button>
-        <button class="btn-save" onclick="saveEmailCorrection()">Guardar corrección</button>
+      <label style="font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px">Borrador de respuesta</label>
+      <textarea id="dm-draft" style="width:100%;height:160px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;line-height:1.6;outline:none;resize:vertical;font-family:inherit"></textarea>
+      <div class="modal-footer" style="margin-top:16px">
+        <button class="btn-cancel" onclick="closeDraftModal()">Cancelar</button>
+        <button class="btn-save" onclick="sendDraftFromModal()">▶ Enviar respuesta</button>
       </div>
     </div>
   </div>
@@ -563,29 +532,20 @@ document.getElementById("confirmModal").addEventListener("click",e=>{if(e.target
 
 fetchTasks();
 
-// ── EMAIL MODULE ──
-// Email module - inline in index.html
+// ── EMAIL MODULE ──────────────────────────────────────────────
 
-const CLS_STYLE = {
-  urgente:   { bg: "#fce8e6", color: "#d93025", icon: "🔴", label: "Priorizado" },
-  util:      { bg: "#e8f0fe", color: "#1a73e8", icon: "🔵", label: "Útil" },
-  poco_util: { bg: "#f1f3f4", color: "#5f6368", icon: "⚪", label: "Poco útil" },
-  spam:      { bg: "#f1f3f4", color: "#9aa0a6", icon: "⛔", label: "Spam" }
-};
-const ACTION_LABELS = {
-  responder:      "✍️ Responder",
-  etiquetar_util: "🔵 Etiquetar",
-  archivar:       "📁 Archivar",
-  marcar_spam:    "⛔ Spam"
+const CLS_CFG = {
+  priorizado: { bg: "#fce8e6", color: "#d93025", icon: "🔴", label: "Priorizado" },
+  auto_reply: { bg: "#e8f0fe", color: "#1a73e8", icon: "✍️", label: "Resp. Automática" },
+  spam:       { bg: "#f1f3f4", color: "#9aa0a6", icon: "⛔", label: "Spam" }
 };
 
-let allEmails = [], emailFilter = "pending", currentEmailId = null;
+let allEmails = [], emailFilter = "all", draftEmailId = null;
 
 async function fetchEmails() {
   document.getElementById("emailList").innerHTML = '<div style="text-align:center;padding:48px 0"><div class="spinner"></div></div>';
   try {
     const d = await api("/emails?status=pending");
-    // Filter out emails sent by Cristóbal himself
     allEmails = (d.emails || []).filter(e => {
       const from = (e.from_email || "").toLowerCase();
       return !from.includes("cristobal@tantauco.vc") && !from.includes("cristobalpinera");
@@ -594,6 +554,8 @@ async function fetchEmails() {
   } catch(e) { showToast("Error cargando emails", "error"); }
 }
 
+async function refreshEmails() { await fetchEmails(); showToast("Actualizado ✓"); }
+
 function setEmailFilter(filter, btn) {
   emailFilter = filter;
   document.querySelectorAll("#view-emails .filter-chip").forEach(b => b.classList.remove("active"));
@@ -601,80 +563,75 @@ function setEmailFilter(filter, btn) {
   renderEmails();
 }
 
-function renderEmails() {
-  let rows = allEmails;
-  if (emailFilter === "approved") rows = allEmails.filter(e => e.status === "approved");
-  else if (emailFilter !== "pending") rows = allEmails.filter(e => e.classification === emailFilter && e.status === "pending");
+function getEffectiveCls(e) {
+  const corr = e.user_correction ? JSON.parse(e.user_correction) : null;
+  return corr?.classification || e.classification || "spam";
+}
 
-  document.getElementById("e-total").textContent    = allEmails.length;
-  document.getElementById("e-urgentes").textContent = allEmails.filter(e => e.classification === "urgente").length;
-  document.getElementById("e-utiles").textContent   = allEmails.filter(e => e.classification === "util").length;
-  document.getElementById("e-spam").textContent     = allEmails.filter(e => e.classification === "spam").length;
+function renderEmails() {
+  const priorizado = allEmails.filter(e => getEffectiveCls(e) === "priorizado");
+  const autoReply  = allEmails.filter(e => getEffectiveCls(e) === "auto_reply");
+  const spam       = allEmails.filter(e => getEffectiveCls(e) === "spam");
+
+  document.getElementById("e-priorizado").textContent = priorizado.length;
+  document.getElementById("e-auto").textContent       = autoReply.length;
+  document.getElementById("e-spam").textContent       = spam.length;
+
+  let rows;
+  if      (emailFilter === "priorizado") rows = priorizado;
+  else if (emailFilter === "auto_reply") rows = autoReply;
+  else if (emailFilter === "spam")       rows = spam;
+  else                                   rows = allEmails;
 
   if (!rows.length) {
-    document.getElementById("emailList").innerHTML = "<div class=\"empty\">No hay emails en esta categoría.</div>";
+    document.getElementById("emailList").innerHTML = '<div class="empty">No hay emails en esta categoría.</div>';
     return;
   }
 
   document.getElementById("emailList").innerHTML = rows.map((e, i) => {
-    const cls = CLS_STYLE[e.classification] || CLS_STYLE.poco_util;
-    const correction = e.user_correction ? JSON.parse(e.user_correction) : null;
-    const clsFinal = correction ? (CLS_STYLE[correction.classification] || cls) : cls;
-    const actionLabel = ACTION_LABELS[correction ? correction.action : e.action] || e.action;
-    const hasDraft = e.draft_reply || (correction && correction.draft_reply);
+    const cls     = getEffectiveCls(e);
+    const cfg     = CLS_CFG[cls] || CLS_CFG.spam;
+    const corr    = e.user_correction ? JSON.parse(e.user_correction) : null;
+    const draft   = corr?.draft_reply || e.draft_reply || "";
     const fromClean = (e.from_email || "").replace(/<.*>/, "").trim();
-    const isUrgent = e.classification === "urgente";
 
-    return "<div style=\"background:var(--surface);border:1px solid " + (isUrgent ? "#f5c6c3" : "var(--border)") + ";border-left:3px solid " + clsFinal.color + ";border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-sm);animation:fadeUp 0.2s ease both;animation-delay:" + (i*0.02) + "s\">" +
-      "<div style=\"display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer\" onclick=\"toggleEmail('" + e.gmail_id + "')\">" +
-        "<input type=\"checkbox\" class=\"email-cb\" data-id=\"" + e.gmail_id + "\" onclick=\"event.stopPropagation()\" style=\"width:16px;height:16px;cursor:pointer;margin-top:2px;flex-shrink:0\" />" +
-        "<div style=\"flex:1;min-width:0\">" +
-          "<div style=\"display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px\">" +
-            "<span style=\"font-size:14px;font-weight:" + (isUrgent ? "700" : "500") + ";color:var(--text)\">" + esc(e.subject || "Sin asunto") + "</span>" +
-            "<span style=\"font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:" + clsFinal.bg + ";color:" + clsFinal.color + ";white-space:nowrap\">" + clsFinal.icon + " " + (clsFinal.label || (correction ? correction.classification : e.classification)) + "</span>" +
-            (hasDraft ? "<span style=\"font-size:10px;background:#e8f0fe;color:#1a73e8;padding:2px 7px;border-radius:4px;font-weight:600\">✍️ draft</span>" : "") +
-          "</div>" +
-          "<div style=\"font-size:12px;color:var(--muted);margin-bottom:4px\">" + esc(fromClean) + "</div>" +
-          "<div style=\"font-size:12px;color:var(--muted2);line-height:1.4\">" + esc((e.snippet || "").slice(0, 120)) + (e.snippet && e.snippet.length > 120 ? "..." : "") + "</div>" +
-        "</div>" +
-        "<div style=\"display:flex;align-items:center;gap:8px;flex-shrink:0\">" +
-          "<span style=\"font-size:11px;color:var(--muted)\">" + actionLabel + "</span>" +
-          "<button class=\"btn-del\" onclick=\"event.stopPropagation();skipEmail('" + e.gmail_id + "')\" style=\"flex-shrink:0\">✕</button>" +
-        "</div>" +
-      "</div>" +
-      "<div id=\"exp-" + e.gmail_id + "\" style=\"display:none;border-top:1px solid var(--border);padding:16px;background:var(--surface2)\">" +
-        "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px\">" +
-          "<div>" +
-            "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Clasificación</label>" +
-            "<select onchange=\"updateEmailInline('" + e.gmail_id + "','classification',this.value)\" style=\"width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit\">" +
-              "<option value=\"urgente\" " + (((correction ? correction.classification : e.classification)==="urgente") ? "selected" : "") + ">🔴 Priorizado</option>" +
-              "<option value=\"util\" " + (((correction ? correction.classification : e.classification)==="util") ? "selected" : "") + ">🔵 Útil</option>" +
-              "<option value=\"poco_util\" " + (((correction ? correction.classification : e.classification)==="poco_util") ? "selected" : "") + ">⚪ Poco útil</option>" +
-              "<option value=\"spam\" " + (((correction ? correction.classification : e.classification)==="spam") ? "selected" : "") + ">⛔ Spam</option>" +
-            "</select>" +
-          "</div>" +
-          "<div>" +
-            "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Acción</label>" +
-            "<select onchange=\"updateEmailInline('" + e.gmail_id + "','action',this.value)\" style=\"width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit\">" +
-              "<option value=\"responder\" " + (((correction ? correction.action : e.action)==="responder") ? "selected" : "") + ">✍️ Responder</option>" +
-              "<option value=\"etiquetar_util\" " + (((correction ? correction.action : e.action)==="etiquetar_util") ? "selected" : "") + ">🔵 Etiquetar útil</option>" +
-              "<option value=\"archivar\" " + (((correction ? correction.action : e.action)==="archivar") ? "selected" : "") + ">📁 Archivar</option>" +
-              "<option value=\"marcar_spam\" " + (((correction ? correction.action : e.action)==="marcar_spam") ? "selected" : "") + ">⛔ Spam</option>" +
-            "</select>" +
-          "</div>" +
-        "</div>" +
-        (hasDraft ? "<div><label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Borrador de respuesta</label><textarea onblur=\"updateEmailInline('" + e.gmail_id + "','draft_reply',this.value)\" style=\"width:100%;height:120px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;line-height:1.6;outline:none;resize:vertical;font-family:inherit\">" + esc(correction ? (correction.draft_reply || "") : (e.draft_reply || "")) + "</textarea></div>" : "") +
-        "<div style=\"margin-bottom:12px\">" +
-          "<label style=\"font-size:11px;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px\">Contenido del email</label>" +
-          "<div id=\"body-" + e.gmail_id + "\" style=\"background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:250px;overflow-y:auto\">Click para cargar...</div>" +
-        "</div>" +
-        (e.ai_reason ? "<div style=\"font-size:12px;color:var(--muted2);margin-top:10px;padding:8px 12px;background:var(--accent-light);border-radius:6px\">🤖 " + esc(e.ai_reason) + "</div>" : "") +
-        "<div style=\"display:flex;gap:8px;margin-top:12px\">" +
-          "<button class=\"btn-outline\" style=\"font-size:12px;padding:6px 14px\" onclick=\"skipEmail('" + e.gmail_id + "')\">Omitir</button>" +
-          "<button class=\"btn-primary\" style=\"font-size:12px;padding:6px 14px\" onclick=\"executeSingle('" + e.gmail_id + "')\">▶ Ejecutar este</button>" +
-        "</div>" +
-      "</div>" +
-    "</div>";
+    // Action buttons per category
+    let actionBtns = "";
+    if (cls === "priorizado") {
+      actionBtns =
+        '<button class="btn-primary" style="font-size:12px;padding:5px 12px" onclick="execStar('' + e.gmail_id + '')">⭐ Marcar estrella</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','auto_reply')">→ Auto-resp</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','spam')">→ Spam</button>';
+    } else if (cls === "auto_reply") {
+      actionBtns =
+        '<button class="btn-primary" style="font-size:12px;padding:5px 12px" onclick="openDraft('' + e.gmail_id + '')">' + (draft ? "✍️ Ver/Editar y enviar" : "✍️ Sin borrador") + '</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','spam')">→ Spam</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','priorizado')">→ Priorizado</button>';
+    } else if (cls === "spam") {
+      actionBtns =
+        '<button class="btn-primary" style="font-size:12px;padding:5px 12px;background:var(--red);border:none" onclick="execSpam('' + e.gmail_id + '')">🗑 Eliminar</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','auto_reply')">→ Auto-resp</button>' +
+        '<button class="btn-outline" style="font-size:12px;padding:5px 12px" onclick="moveEmail('' + e.gmail_id + '','priorizado')">→ Priorizado</button>';
+    }
+
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid ' + cfg.color + ';border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-sm);animation:fadeUp 0.2s ease both;animation-delay:' + (i*0.02) + 's">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;cursor:pointer" onclick="toggleEmail('' + e.gmail_id + '')">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">' +
+            '<span style="font-size:14px;font-weight:600;color:var(--text)">' + esc(e.subject || "Sin asunto") + '</span>' +
+            '<span style="font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:' + cfg.bg + ';color:' + cfg.color + '">' + cfg.icon + ' ' + cfg.label + '</span>' +
+            (draft ? '<span style="font-size:10px;background:#e8f0fe;color:#1a73e8;padding:2px 7px;border-radius:4px;font-weight:600">borrador</span>' : '') +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:3px">' + esc(fromClean) + '</div>' +
+          '<div style="font-size:12px;color:var(--muted2);line-height:1.4">' + esc((e.snippet||"").slice(0,120)) + (e.snippet && e.snippet.length>120 ? "..." : "") + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="exp-' + e.gmail_id + '" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:var(--surface2)">' +
+        '<div id="body-' + e.gmail_id + '" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:220px;overflow-y:auto;margin-bottom:12px">Click para cargar...</div>' +
+        (e.ai_reason ? '<div style="font-size:12px;color:var(--muted2);padding:7px 12px;background:var(--accent-light);border-radius:6px;margin-bottom:12px">🤖 ' + esc(e.ai_reason) + '</div>' : '') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' + actionBtns + '</div>' +
+      '</div>' +
+    '</div>';
   }).join("");
 }
 
@@ -684,8 +641,6 @@ async function toggleEmail(gmailId) {
   const isOpen = el.style.display !== "none";
   if (isOpen) { el.style.display = "none"; return; }
   el.style.display = "block";
-  
-  // Load full body if not loaded yet
   const bodyEl = document.getElementById("body-" + gmailId);
   if (bodyEl && bodyEl.dataset.loaded !== "1") {
     bodyEl.textContent = "Cargando...";
@@ -697,108 +652,74 @@ async function toggleEmail(gmailId) {
   }
 }
 
-async function updateEmailInline(gmailId, field, value) {
-  const email = allEmails.find(e => e.gmail_id === gmailId);
-  if (!email) return;
-  const correction = email.user_correction ? JSON.parse(email.user_correction) : {
-    classification: email.classification,
-    action: email.action,
-    draft_reply: email.draft_reply
-  };
-  correction[field] = value;
-
-  // Auto-set sensible action when classification changes
-  if (field === "classification") {
-    if (value === "urgente")    correction.action = "responder";
-    if (value === "util")       correction.action = "etiquetar_util";
-    if (value === "poco_util")  correction.action = "archivar";
-    if (value === "spam")       correction.action = "marcar_spam";
-  }
-
-  email.user_correction = JSON.stringify(correction);
+async function moveEmail(gmailId, newCls) {
   try {
-    await api("/emails/" + gmailId, "PATCH", { user_correction: JSON.stringify(correction) });
-    showToast("✓ Guardado");
+    await api("/emails/move", "POST", { gmailId, classification: newCls });
+    const email = allEmails.find(e => e.gmail_id === gmailId);
+    if (email) {
+      const corr = email.user_correction ? JSON.parse(email.user_correction) : {};
+      const actionMap = { priorizado: "estrella", auto_reply: "auto_reply", spam: "marcar_spam" };
+      corr.classification = newCls;
+      corr.action = actionMap[newCls];
+      email.user_correction = JSON.stringify(corr);
+    }
     renderEmails();
-    setTimeout(() => {
-      const el = document.getElementById("exp-" + gmailId);
-      if (el) el.style.display = "block";
-    }, 50);
+    showToast("Movido a " + (CLS_CFG[newCls]?.label || newCls) + " ✓");
   } catch(e) { showToast(e.message, "error"); }
 }
 
-async function executeSingle(gmailId) {
-  showToast("Ejecutando...");
+async function execStar(gmailId) {
   try {
-    const r = await api("/emails/execute", "POST", { gmailIds: [gmailId] });
-    showToast("✓ Ejecutado");
-    // Remove from pending list immediately
+    await api("/emails/execute", "POST", { gmailIds: [gmailId] });
     allEmails = allEmails.filter(e => e.gmail_id !== gmailId);
     renderEmails();
+    showToast("⭐ Marcado con estrella en Gmail");
   } catch(e) { showToast(e.message, "error"); }
 }
 
-function emailSelectAll() {
-  const cbs = document.querySelectorAll(".email-cb");
-  const allChecked = [...cbs].every(c => c.checked);
-  cbs.forEach(c => c.checked = !allChecked);
-}
-
-async function executeSelected() {
-  const selected = [...document.querySelectorAll(".email-cb:checked")].map(c => c.dataset.id);
-  if (!selected.length) { showToast("Selecciona al menos un email", "error"); return; }
-  showToast("Ejecutando " + selected.length + " acciones...");
+async function execSpam(gmailId) {
   try {
-    const r = await api("/emails/execute", "POST", { gmailIds: selected });
-    showToast(`✓ ${r.done} ejecutados`);
-    // Remove executed from pending list immediately
-    allEmails = allEmails.filter(e => !selected.includes(e.gmail_id));
+    await api("/emails/execute", "POST", { gmailIds: [gmailId] });
+    allEmails = allEmails.filter(e => e.gmail_id !== gmailId);
     renderEmails();
+    showToast("🗑 Eliminado como spam");
   } catch(e) { showToast(e.message, "error"); }
 }
 
-async function skipEmail(gmailId) {
-  await api("/emails/skip", "POST", { gmailIds: [gmailId] });
-  allEmails = allEmails.filter(e => e.gmail_id !== gmailId);
-  renderEmails();
-  showToast("Email omitido");
-}
-
-function openEmailModal(gmailId) {
+function openDraft(gmailId) {
   const email = allEmails.find(e => e.gmail_id === gmailId);
   if (!email) return;
-  const correction = email.user_correction ? JSON.parse(email.user_correction) : null;
-  currentEmailId = gmailId;
-  document.getElementById("em-subject").textContent = email.subject || "Sin asunto";
-  document.getElementById("em-from").textContent    = email.from_email || "";
-  document.getElementById("em-snippet").textContent = email.snippet || "";
-  document.getElementById("em-classification").value = correction?.classification || email.classification || "poco_util";
-  document.getElementById("em-action").value         = correction?.action || email.action || "archivar";
-  document.getElementById("em-draft").value          = correction?.draft_reply || email.draft_reply || "";
-  document.getElementById("em-reason").textContent   = "🤖 " + (email.ai_reason || "Sin explicación");
-  document.getElementById("emailModal").style.display = "flex";
+  const corr = email.user_correction ? JSON.parse(email.user_correction) : null;
+  draftEmailId = gmailId;
+  document.getElementById("dm-subject").textContent = email.subject || "Sin asunto";
+  document.getElementById("dm-from").textContent    = (email.from_email || "").replace(/<.*>/, "").trim();
+  document.getElementById("dm-draft").value         = corr?.draft_reply || email.draft_reply || "";
+  document.getElementById("draftModal").style.display = "flex";
 }
 
-function closeEmailModal() { document.getElementById("emailModal").style.display = "none"; currentEmailId = null; }
+function closeDraftModal() { document.getElementById("draftModal").style.display = "none"; draftEmailId = null; }
 
-async function saveEmailCorrection() {
-  if (!currentEmailId) return;
-  const correction = {
-    classification: document.getElementById("em-classification").value,
-    action:         document.getElementById("em-action").value,
-    draft_reply:    document.getElementById("em-draft").value || null
-  };
+async function sendDraftFromModal() {
+  if (!draftEmailId) return;
+  const newDraft = document.getElementById("dm-draft").value.trim();
+  if (!newDraft) { showToast("El borrador está vacío", "error"); return; }
   try {
-    await api(`/emails/${currentEmailId}`, "PATCH", { user_correction: JSON.stringify(correction) });
-    const email = allEmails.find(e => e.gmail_id === currentEmailId);
-    if (email) email.user_correction = JSON.stringify(correction);
-    closeEmailModal(); renderEmails(); showToast("Corrección guardada ✓");
+    // Save edited draft then execute
+    const email = allEmails.find(e => e.gmail_id === draftEmailId);
+    const corr = email?.user_correction ? JSON.parse(email.user_correction) : { classification: "auto_reply", action: "auto_reply" };
+    corr.draft_reply = newDraft;
+    await api("/emails/" + draftEmailId, "PATCH", { user_correction: JSON.stringify(corr) });
+    await api("/emails/execute", "POST", { gmailIds: [draftEmailId] });
+    allEmails = allEmails.filter(e => e.gmail_id !== draftEmailId);
+    closeDraftModal();
+    renderEmails();
+    showToast("✅ Respuesta enviada");
   } catch(e) { showToast(e.message, "error"); }
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  const modal = document.getElementById("emailModal");
-  if (modal) modal.addEventListener("click", e => { if(e.target === modal) closeEmailModal(); });
+  const dm = document.getElementById("draftModal");
+  if (dm) dm.addEventListener("click", e => { if(e.target === dm) closeDraftModal(); });
 });
 
 </script>
