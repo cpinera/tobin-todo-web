@@ -482,6 +482,7 @@ function renderTasks() {
 }
 
 function renderTaskHTML(t, i) {
+  if (!t || !t.id) return "";
   const isDone = t.estado === "Listo";
   const isProg = t.estado === "En progreso";
   const p = getPriority(t);
@@ -510,7 +511,7 @@ function renderTaskHTML(t, i) {
       ${totalM > 0
         ? `<span class="cuota-link" onclick="openCuotas(${t.id})">$${totalM.toLocaleString()} ${pagM}/${totalC}</span>`
         : `<span class="cuota-link empty" onclick="openCuotas(${t.id})">+ cuotas</span>`}
-      <button class="btn-subtask ${hasSubs ? "has-subs" : ""}" onclick="toggleSubtasks(${t.id})" title="${hasSubs ? doneSubsCount+"/"+subs.length+" subtareas" : "Agregar subtareas"}">
+      <button id="sub-btn-${t.id}" class="btn-subtask ${hasSubs ? "has-subs" : ""}" onclick="toggleSubtasks(${t.id})" title="${hasSubs ? doneSubsCount+"/"+subs.length+" subtareas" : "Agregar subtareas"}">
         ${hasSubs ? `<span style="font-size:10px;font-weight:700">${doneSubsCount}/${subs.length}</span>` : "☰"}
       </button>
       <button class="btn-del" onclick="openConfirm('task',${t.id})">✕</button>
@@ -563,32 +564,34 @@ async function saveSubtasks(id, subs) {
   const t = allTasks.find(t => t.id === id); if (!t) return;
   t.subtasks = subs;
 
-  // Update panel in-place without full re-render (evita error de id undefined)
+  // Update sub-list in-place using string concat (no nested template literals)
   const subList = document.getElementById("sub-list-" + id);
   if (subList) {
-    subList.innerHTML = subs.map((s, si) => `
-      <div class="subtask-item">
-        <div class="sub-check ${s.done?"done":""}" onclick="toggleSubtask(${id}, ${si})">${s.done?"✓":""}</div>
-        <input class="sub-name ${s.done?"done":""}" value="${esc(s.text)}"
-          onblur="saveSubtaskName(${id}, ${si}, this.value)"
-          onkeydown="if(event.key==='Enter')this.blur()" />
-        <button class="btn-sub-del" onclick="deleteSubtask(${id}, ${si})">✕</button>
-      </div>`).join("");
+    subList.innerHTML = subs.map(function(s, si) {
+      var doneCls  = s.done ? "done" : "";
+      var checkMark = s.done ? "✓" : "";
+      var safeText = esc(s.text);
+      return '<div class="subtask-item">'
+        + '<div class="sub-check ' + doneCls + '" onclick="toggleSubtask(' + id + ',' + si + ')">' + checkMark + '</div>'
+        + '<input class="sub-name ' + doneCls + '" value="' + safeText + '" onblur="saveSubtaskName(' + id + ',' + si + ',this.value)" onkeydown="if(event.key==='Enter')this.blur()" />'
+        + '<button class="btn-sub-del" onclick="deleteSubtask(' + id + ',' + si + ')">✕</button>'
+        + '</div>';
+    }).join("");
   }
 
-  // Actualizar badge del botón de subtareas
-  const panel = document.getElementById("sub-panel-" + id);
-  const btn = panel && panel.previousElementSibling && panel.previousElementSibling.querySelector('.btn-subtask');
-  if (btn) {
-    const doneCount = subs.filter(s => s.done).length;
-    btn.className = "btn-subtask" + (subs.length ? " has-subs" : "");
-    btn.innerHTML = subs.length ? `<span style="font-size:10px;font-weight:700">${doneCount}/${subs.length}</span>` : "☰";
+  // Update subtask badge button
+  var subBtn = document.getElementById("sub-btn-" + id);
+  if (subBtn) {
+    var doneCount = subs.filter(function(s){ return s.done; }).length;
+    subBtn.className = "btn-subtask" + (subs.length ? " has-subs" : "");
+    subBtn.innerHTML = subs.length
+      ? '<span style="font-size:10px;font-weight:700">' + doneCount + '/' + subs.length + '</span>'
+      : "☰";
   }
 
-  try { await api(`/tasks/${id}`, "PATCH", { subtasks: subs }); }
+  try { await api("/tasks/" + id, "PATCH", { subtasks: subs }); }
   catch(e) { showToast(e.message, "error"); }
 }
-
 async function addSubtask(id) {
   const input = document.getElementById("sub-input-" + id);
   if (!input) return;
