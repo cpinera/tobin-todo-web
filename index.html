@@ -562,8 +562,29 @@ function getSubtasks(id) {
 async function saveSubtasks(id, subs) {
   const t = allTasks.find(t => t.id === id); if (!t) return;
   t.subtasks = subs;
-  renderTasks();
-  openSubtasks.add(id); // keep panel open after re-render
+
+  // Update panel in-place without full re-render (evita error de id undefined)
+  const subList = document.getElementById("sub-list-" + id);
+  if (subList) {
+    subList.innerHTML = subs.map((s, si) => `
+      <div class="subtask-item">
+        <div class="sub-check ${s.done?"done":""}" onclick="toggleSubtask(${id}, ${si})">${s.done?"✓":""}</div>
+        <input class="sub-name ${s.done?"done":""}" value="${esc(s.text)}"
+          onblur="saveSubtaskName(${id}, ${si}, this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" />
+        <button class="btn-sub-del" onclick="deleteSubtask(${id}, ${si})">✕</button>
+      </div>`).join("");
+  }
+
+  // Actualizar badge del botón de subtareas
+  const panel = document.getElementById("sub-panel-" + id);
+  const btn = panel && panel.previousElementSibling && panel.previousElementSibling.querySelector('.btn-subtask');
+  if (btn) {
+    const doneCount = subs.filter(s => s.done).length;
+    btn.className = "btn-subtask" + (subs.length ? " has-subs" : "");
+    btn.innerHTML = subs.length ? `<span style="font-size:10px;font-weight:700">${doneCount}/${subs.length}</span>` : "☰";
+  }
+
   try { await api(`/tasks/${id}`, "PATCH", { subtasks: subs }); }
   catch(e) { showToast(e.message, "error"); }
 }
