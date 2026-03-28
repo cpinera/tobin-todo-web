@@ -1,861 +1,769 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>To-Do · Tobin</title>
-<style>
-:root {
-  --bg: #f0f4f8;
-  --surface: #ffffff;
-  --surface2: #f8fafc;
-  --border: #e2e8f0;
-  --text: #1a202c;
-  --muted: #718096;
-  --muted2: #a0aec0;
-  --blue: #2563eb;
-  --blue-light: #eff6ff;
-  --green: #16a34a;
-  --green-light: #f0fdf4;
-  --yellow: #d97706;
-  --yellow-light: #fffbeb;
-  --red: #dc2626;
-  --red-light: #fef2f2;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-a { color: inherit; text-decoration: none; }
+const express = require("express");
+const { getGmailAuthUrl, saveGmailTokens, getEmailBatch, getEmailBody } = require("./gmail");
+const { scanEmails, executeApproved, skipEmails, moveEmail, scheduleEmailScans } = require("./email-agent");
+const { CALENDAR_TOOLS, executeCalendarTool, getOAuth2Client, setTokens } = require("./calendar");
+const axios   = require("axios");
 
-/* ── Header ── */
-.header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px; position: sticky; top: 0; z-index: 100; }
-.logo { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
-.logo span { color: var(--blue); }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
-.tg-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; }
-.header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.btn-refresh { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 16px; color: var(--muted); transition: all .15s; }
-.btn-refresh:hover { background: var(--surface2); color: var(--text); }
-.btn-primary { background: var(--blue); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
-.btn-primary:hover { opacity: .9; }
-.btn-outline { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text); transition: all .15s; }
-.btn-outline:hover { background: var(--surface2); }
+const app = express();
+app.use(express.json());
 
-/* ── Tabs ── */
-.tabs { border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 24px; display: flex; gap: 4px; }
-.tab-btn { padding: 14px 16px; font-size: 14px; font-weight: 500; color: var(--muted); border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
-.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
-.tab-btn:hover:not(.active) { color: var(--text); }
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
 
-/* ── Main ── */
-.main { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const ANTHROPIC_KEY  = process.env.ANTHROPIC_KEY;
+const API_SECRET     = process.env.API_SECRET || "tobin2024";
+const SUPABASE_URL   = process.env.SUPABASE_URL;
+const SUPABASE_KEY   = process.env.SUPABASE_KEY;
+const TELEGRAM_API   = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+const SUPA_HEADERS   = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" };
 
-/* ── Stats ── */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow); }
-.stat-num { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1; }
-.stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 500; }
+const histories = {};
 
-/* ── Filters ── */
-.filter-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.filter-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--muted); transition: all .15s; }
-.filter-chip:hover { color: var(--text); border-color: #94a3b8; }
-.filter-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: 600; }
-
-/* ── Table header ── */
-.table-header { display: grid; grid-template-columns: 40px 1fr 100px 160px 130px 110px 36px 36px; gap: 8px; padding: 0 16px; margin-bottom: 8px; }
-.th { font-size: 11px; font-weight: 600; color: var(--muted2); text-transform: uppercase; letter-spacing: 0.5px; }
-
-/* ── Task card ── */
-.task-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; box-shadow: var(--shadow); transition: box-shadow .15s; overflow: hidden; }
-.task-card:hover { box-shadow: var(--shadow-md); }
-.task-card.done { opacity: .55; }
-.task-row { display: grid; grid-template-columns: 40px 1fr 100px 160px 130px 110px 36px 36px; gap: 8px; padding: 14px 16px; align-items: center; }
-
-/* ── Check ── */
-.check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; transition: all .15s; flex-shrink: 0; }
-.check:hover { border-color: var(--blue); }
-.check.done { background: var(--green); border-color: var(--green); color: #fff; }
-.check.progress { background: var(--yellow); border-color: var(--yellow); color: #fff; }
-
-/* ── Task name ── */
-.task-name { width: 100%; border: none; background: transparent; font-size: 14px; font-weight: 500; color: var(--text); outline: none; font-family: inherit; padding: 2px 4px; border-radius: 4px; }
-.task-name:hover { background: var(--surface2); }
-.task-name:focus { background: var(--blue-light); }
-.task-card.done .task-name { text-decoration: line-through; color: var(--muted); }
-
-/* ── Priority ── */
-.priority-cell { display: flex; align-items: center; gap: 6px; }
-.priority-input { width: 40px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 700; text-align: center; background: var(--surface2); outline: none; font-family: inherit; color: var(--text); -moz-appearance: textfield; }
-.priority-input::-webkit-inner-spin-button, .priority-input::-webkit-outer-spin-button { -webkit-appearance: none; }
-.priority-input:focus { border-color: var(--blue); background: var(--blue-light); }
-.p-badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
-.p-alta { background: var(--red-light); color: var(--red); }
-.p-media { background: var(--yellow-light); color: var(--yellow); }
-.p-baja { background: var(--green-light); color: var(--green); }
-
-/* ── Status select ── */
-.inline-select { border: none; border-radius: 20px; padding: 5px 10px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; -webkit-appearance: none; text-align: center; width: 100%; }
-
-/* ── Date ── */
-.inline-date { border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; font-size: 12px; background: transparent; outline: none; font-family: inherit; color: var(--muted); width: 100%; }
-.inline-date:hover { border-color: var(--border); background: var(--surface2); }
-.inline-date:focus { border-color: var(--blue); background: var(--blue-light); }
-
-/* ── Cuota link ── */
-.cuota-link { font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; white-space: nowrap; }
-.cuota-link.empty { color: var(--muted2); font-weight: 400; }
-.cuota-link:hover { text-decoration: underline; }
-
-/* ── Subtask toggle ── */
-.btn-subtask { background: none; border: 1px solid var(--border); border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 12px; color: var(--muted); display: flex; align-items: center; justify-content: center; transition: all .15s; }
-.btn-subtask:hover { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
-.btn-subtask.has-subs { color: var(--blue); border-color: var(--blue); background: var(--blue-light); }
-
-/* ── Delete ── */
-.btn-del { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--muted2); width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
-.btn-del:hover { background: var(--red-light); color: var(--red); }
-
-/* ── Subtasks panel ── */
-.subtasks-panel { border-top: 1px solid var(--border); background: var(--surface2); padding: 12px 56px 14px; }
-.subtask-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-.subtask-item:last-child { border-bottom: none; }
-.sub-check { width: 18px; height: 18px; border-radius: 4px; border: 2px solid var(--border); cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: all .15s; }
-.sub-check.done { background: var(--green); border-color: var(--green); color: #fff; }
-.sub-check:hover { border-color: var(--blue); }
-.sub-name { flex: 1; border: none; background: transparent; font-size: 13px; color: var(--text); outline: none; font-family: inherit; padding: 2px 4px; border-radius: 4px; }
-.sub-name:focus { background: var(--blue-light); }
-.sub-name.done { text-decoration: line-through; color: var(--muted); }
-.btn-sub-del { background: none; border: none; cursor: pointer; color: var(--muted2); font-size: 12px; padding: 2px 6px; border-radius: 4px; }
-.btn-sub-del:hover { background: var(--red-light); color: var(--red); }
-.add-subtask-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.add-subtask-input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; background: var(--surface); outline: none; font-family: inherit; }
-.add-subtask-input:focus { border-color: var(--blue); }
-.btn-add-sub { background: var(--blue); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-
-/* ── New task row ── */
-.new-row { background: var(--surface); border: 2px dashed var(--blue); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 6px; display: none; }
-.new-row-grid { display: grid; grid-template-columns: 1fr 80px 160px 130px 100px; gap: 10px; align-items: center; }
-.new-input { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 14px; background: var(--surface2); outline: none; font-family: inherit; width: 100%; }
-.new-input:focus { border-color: var(--blue); background: var(--blue-light); }
-.new-row-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
-
-/* ── Completed section ── */
-.completed-section { margin-top: 24px; }
-.completed-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; user-select: none; transition: background .15s; }
-.completed-header:hover { background: var(--surface2); }
-.completed-title { font-size: 14px; font-weight: 600; color: var(--muted); flex: 1; }
-.completed-count { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 600; color: var(--muted); }
-.completed-arrow { font-size: 12px; color: var(--muted2); transition: transform .2s; }
-.completed-arrow.open { transform: rotate(90deg); }
-.completed-body { margin-top: 4px; }
-
-/* ── Empty ── */
-.empty { text-align: center; padding: 64px 20px; color: var(--muted); font-size: 15px; }
-
-/* ── Spinner ── */
-.spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 12px; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Toast ── */
-#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1a202c; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; opacity: 0; transition: all .25s; z-index: 999; white-space: nowrap; }
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-#toast.error { background: var(--red); }
-
-/* ── Modals ── */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 500; padding: 20px; }
-.modal { background: var(--surface); border-radius: 16px; padding: 28px; width: 100%; max-width: 460px; box-shadow: var(--shadow-md); }
-.modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
-.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-
-/* ── Cuotas modal ── */
-.cuota-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.cuota-num { font-size: 12px; color: var(--muted); font-weight: 600; width: 28px; }
-.cuota-input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 14px; background: var(--surface2); outline: none; font-family: inherit; }
-.cuota-check { width: 24px; height: 24px; border-radius: 6px; border: 2px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; transition: all .15s; }
-.cuota-check.paid { background: var(--green); border-color: var(--green); color: #fff; }
-
-/* ── Emails & Cuentas ── */
-.task { display: grid; grid-template-columns: 40px 1fr 120px 140px 130px; gap: 8px; align-items: center; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; box-shadow: var(--shadow); }
-
-@media (max-width: 768px) {
-  .stats { grid-template-columns: repeat(2,1fr); }
-  .table-header { display: none; }
-  .task-row { grid-template-columns: 36px 1fr 90px 28px; }
-  .task-row > *:nth-child(3), .task-row > *:nth-child(4), .task-row > *:nth-child(5), .task-row > *:nth-child(6) { display: none; }
-}
-</style>
-</head>
-<body>
-
-<!-- Header -->
-<div class="header">
-  <div class="logo">To-Do<span>.</span></div>
-  <div class="tg-badge"><div class="status-dot"></div> Telegram</div>
-  <div class="header-right">
-    <button class="btn-refresh" id="refresh-btn" title="Actualizar">↺</button>
-    <button class="btn-primary" id="new-task-btn" style="display:none">+ Nueva tarea</button>
-  </div>
-</div>
-
-<!-- Tabs -->
-<div class="tabs">
-  <button class="tab-btn active" id="tab-tareas" onclick="switchTab('tareas')">Tareas</button>
-  <button class="tab-btn" id="tab-cuentas" onclick="switchTab('cuentas')">Cuentas</button>
-  <button class="tab-btn" id="tab-emails" onclick="switchTab('emails')">Emails</button>
-</div>
-
-<!-- ══ TAREAS ══ -->
-<div id="view-tareas" class="main">
-
-  <!-- Stats -->
-  <div class="stats">
-    <div class="stat-card"><div class="stat-num" id="s-total">-</div><div class="stat-label">Total</div></div>
-    <div class="stat-card"><div class="stat-num" id="s-pend">-</div><div class="stat-label">Pendientes</div></div>
-    <div class="stat-card"><div class="stat-num" id="s-prog">-</div><div class="stat-label">En progreso</div></div>
-    <div class="stat-card"><div class="stat-num" id="s-done">-</div><div class="stat-label">Completadas</div></div>
-  </div>
-
-  <!-- Filters -->
-  <div class="filter-row">
-    <button class="filter-chip active" onclick="setFilter('active',this)">Pendientes + En progreso</button>
-    <button class="filter-chip" onclick="setFilter('all',this)">Todas</button>
-    <button class="filter-chip" onclick="setFilter('Pendiente',this)">⏳ Pendientes</button>
-    <button class="filter-chip" onclick="setFilter('En progreso',this)">🔄 En progreso</button>
-    <button class="filter-chip" onclick="setSortScore(this)">⚡ Por prioridad</button>
-  </div>
-
-  <!-- Table header -->
-  <div class="table-header">
-    <div></div>
-    <div class="th">Tarea</div>
-    <div class="th">Prioridad</div>
-    <div class="th">Estado</div>
-    <div class="th">Fecha</div>
-    <div class="th">Cuotas</div>
-    <div class="th"></div>
-    <div class="th"></div>
-  </div>
-
-  <!-- New task row -->
-  <div class="new-row" id="newRow">
-    <div class="new-row-grid">
-      <input class="new-input" id="new-nombre" placeholder="Nombre de la tarea..." onkeydown="if(event.key==='Enter')confirmNew()" />
-      <input class="new-input" id="new-prioridad" type="number" min="1" max="10" value="5" placeholder="1-10" />
-      <select class="new-input" id="new-estado">
-        <option value="Pendiente">⏳ Pendiente</option>
-        <option value="En progreso">🔄 En progreso</option>
-        <option value="Listo">✅ Listo</option>
-      </select>
-      <input class="new-input" id="new-fecha" type="date" />
-    </div>
-    <div class="new-row-actions">
-      <button class="btn-outline" onclick="hideNewRow()">Cancelar</button>
-      <button class="btn-primary" onclick="confirmNew()">Agregar</button>
-    </div>
-  </div>
-
-  <!-- Task list (active) -->
-  <div id="taskList"></div>
-
-  <!-- Completed section -->
-  <div class="completed-section" id="completedSection" style="display:none">
-    <div class="completed-header" onclick="toggleCompleted()">
-      <span style="font-size:16px">✅</span>
-      <span class="completed-title">Completadas</span>
-      <span class="completed-count" id="completed-count">0</span>
-      <span class="completed-arrow" id="completed-arrow">▶</span>
-    </div>
-    <div class="completed-body" id="completedList" style="display:none"></div>
-  </div>
-
-</div>
-
-<!-- ══ CUENTAS ══ -->
-<div id="view-cuentas" style="display:none" class="main">
-  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center">
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <select id="filter-mes" onchange="fetchCuentas()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--surface);outline:none;font-family:inherit">
-        <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
-        <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
-        <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
-        <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
-      </select>
-      <select id="filter-anio" onchange="fetchCuentas()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--surface);outline:none;font-family:inherit">
-        <option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option>
-      </select>
-      <select id="filter-cestado" onchange="renderCuentas()" style="border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--surface);outline:none;font-family:inherit">
-        <option value="all">Todos</option><option value="Por pagar">Por pagar</option><option value="Pagado">Pagado</option>
-      </select>
-    </div>
-    <button class="btn-primary" onclick="seedMonth()">+ Generar mes</button>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-    <div class="stat-card"><div class="stat-num" id="c-total">-</div><div class="stat-label">Total del mes</div></div>
-    <div class="stat-card"><div class="stat-num" id="c-pagadas">-</div><div class="stat-label">Pagadas</div></div>
-    <div class="stat-card"><div class="stat-num" id="c-pagar">-</div><div class="stat-label">Por pagar</div></div>
-    <div class="stat-card"><div class="stat-num" id="c-pendiente">-</div><div class="stat-label">Monto pendiente</div></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 140px 140px 80px 28px;gap:8px;padding:0 16px;margin-bottom:8px">
-    <div class="th">Cuenta</div><div class="th">Monto</div><div class="th">Estado</div><div class="th">Variación</div><div></div>
-  </div>
-  <div id="cuentasList"></div>
-</div>
-
-<!-- ══ EMAILS ══ -->
-<div id="view-emails" style="display:none" class="main">
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-    <button class="filter-chip active" onclick="setEmailFilter('all',this)">Todos</button>
-    <button class="filter-chip" onclick="setEmailFilter('priorizado',this)">Priorizado</button>
-    <button class="filter-chip" onclick="setEmailFilter('auto_reply',this)">Resp. Automatica</button>
-    <button class="filter-chip" onclick="setEmailFilter('spam',this)">Spam</button>
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-      <button class="btn-outline" onclick="emailSelectAll()">Seleccionar todo</button>
-      <button class="btn-primary" id="btn-exec-selected" style="display:none" onclick="executeSelected()">▶ Ejecutar seleccionados (<span id="sel-count">0</span>)</button>
-      <button class="btn-outline" onclick="refreshEmails()">Actualizar</button>
-      <button class="btn-outline" id="btn-scan" onclick="scanGmail()">Revisar Gmail</button>
-    </div>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-    <div class="stat-card"><div class="stat-num" id="e-priorizado">-</div><div class="stat-label">Priorizado</div></div>
-    <div class="stat-card"><div class="stat-num" id="e-auto">-</div><div class="stat-label">Resp. Automatica</div></div>
-    <div class="stat-card"><div class="stat-num" id="e-spam">-</div><div class="stat-label">Spam</div></div>
-  </div>
-  <div id="emailList"></div>
-</div>
-
-<!-- ══ MODALS ══ -->
-
-<!-- Cuotas -->
-<div class="modal-overlay" id="cuotasModal">
-  <div class="modal" style="max-width:380px;max-height:90vh;overflow-y:auto">
-    <div class="modal-title" id="cuotas-title">Cuotas</div>
-    <div id="cuotas-list"></div>
-    <div class="modal-actions">
-      <button class="btn-outline" onclick="closeCuotas()">Cancelar</button>
-      <button class="btn-primary" onclick="saveCuotas()">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Draft -->
-<div class="modal-overlay" id="draftModal">
-  <div class="modal">
-    <div class="modal-title">Borrador de respuesta</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:4px" id="dm-subject"></div>
-    <div style="font-size:12px;color:var(--muted2);margin-bottom:16px" id="dm-from"></div>
-    <textarea id="dm-draft" style="width:100%;min-height:140px;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;outline:none;background:var(--surface2)"></textarea>
-    <div class="modal-actions">
-      <button class="btn-outline" onclick="closeDraftModal()">Cancelar</button>
-      <button class="btn-primary" onclick="sendDraftFromModal()">Enviar respuesta</button>
-    </div>
-  </div>
-</div>
-
-<!-- Confirm delete -->
-<div class="modal-overlay" id="confirmModal">
-  <div class="modal" style="max-width:340px;text-align:center">
-    <div style="font-size:32px;margin-bottom:12px">🗑️</div>
-    <div class="modal-title">¿Eliminar?</div>
-    <div style="font-size:14px;color:var(--muted);margin-bottom:4px">Esta acción no se puede deshacer.</div>
-    <div class="modal-actions" style="justify-content:center">
-      <button class="btn-outline" onclick="closeConfirm()">Cancelar</button>
-      <button class="btn-primary" style="background:var(--red)" onclick="confirmDelete()">Eliminar</button>
-    </div>
-  </div>
-</div>
-
-<!-- Toast -->
-<div id="toast"></div>
-
-<script>
-const API_URL = "https://tobin-bot-production.up.railway.app";
-const HEADERS = { "Content-Type": "application/json", "x-api-key": "tobin2024" };
-
-// ── Tab switching ──────────────────────────────────────────────
-function switchTab(tab) {
-  ['tareas','cuentas','emails'].forEach(t => {
-    document.getElementById('view-'+t).style.display = t===tab ? 'block' : 'none';
-    document.getElementById('tab-'+t).className = 'tab-btn' + (t===tab ? ' active' : '');
-  });
-  document.getElementById('refresh-btn').onclick = tab==='tareas' ? fetchTasks : tab==='cuentas' ? fetchCuentas : fetchEmails;
-  document.getElementById('new-task-btn').style.display = tab==='tareas' ? 'block' : 'none';
-  if (tab==='emails') fetchEmails();
-  if (tab==='cuentas') fetchCuentas();
-}
-document.getElementById('refresh-btn').onclick = fetchTasks;
-document.getElementById('new-task-btn').onclick = showNewRow;
-
-// ── Toast ──────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg, type="success") {
-  const t = document.getElementById("toast");
-  t.textContent = msg; t.className = "show " + type;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "", 2500);
-}
-function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-
-async function api(path, method="GET", body) {
-  const r = await fetch(`${API_URL}${path}`, { method, headers: HEADERS, body: body ? JSON.stringify(body) : undefined });
-  const d = await r.json(); if (!r.ok) throw new Error(d.error || "Error"); return d;
+// ── Supabase helpers ──────────────────────────────────────────
+async function dbGetAll() {
+  const res = await axios.get(`${SUPABASE_URL}/rest/v1/tasks?order=created_at.desc`, { headers: SUPA_HEADERS });
+  return res.data.map(row => ({
+    id:        row.id,
+    nombre:    row.nombre,
+    estado:    row.estado,
+    urgencia:  row.urgencia,
+    fecha:     row.fecha,
+    monto:     row.monto,
+    cuotas:    row.cuotas,
+    cuotaList: row.cuota_list || [],
+    valor:     row.valor    || 5,
+    esfuerzo:  row.esfuerzo || 5,
+    createdAt: row.created_at
+  }));
 }
 
-// ══════════════════════════════════════════════════════════════
-// TAREAS
-// ══════════════════════════════════════════════════════════════
-let allTasks = [], curFilter = "active", sortByPriority = false;
-let deletingId = null, deletingType = null;
-let cuotasTaskId = null, cuotaData = [];
-let openSubtasks = new Set(); // task IDs with subtasks panel open
+async function dbCreate(data) {
+  const res = await axios.post(`${SUPABASE_URL}/rest/v1/tasks`, {
+    nombre:    data.nombre,
+    estado:    data.estado    || "Pendiente",
+    urgencia:  data.urgencia  || "Media",
+    fecha:     data.fecha     || "",
+    monto:     data.monto     || 0,
+    cuotas:    data.cuotas    || 1,
+    cuota_list: data.cuotaList || [],
+    valor:     data.valor    || 5,
+    esfuerzo:  data.esfuerzo || 5
+  }, { headers: SUPA_HEADERS });
+  const row = res.data[0];
+  return { id:row.id, nombre:row.nombre, estado:row.estado, urgencia:row.urgencia, fecha:row.fecha, monto:row.monto, cuotas:row.cuotas, cuotaList:row.cuota_list||[], valor:row.valor||5, esfuerzo:row.esfuerzo||5, createdAt:row.created_at };
+}
 
-const STATUS = ["Pendiente","En progreso","Listo"];
-const S_ICON  = { "Pendiente":"⏳", "En progreso":"🔄", "Listo":"✅" };
-const S_STYLE = {
-  "Pendiente": "background:#e8f0fe;color:#1a73e8;",
-  "En progreso": "background:#fef7e0;color:#f29900;",
-  "Listo": "background:#e6f4ea;color:#1e8e3e;"
-};
+async function dbUpdate(id, data) {
+  const body = {};
+  if (data.nombre    !== undefined) body.nombre    = data.nombre;
+  if (data.estado    !== undefined) body.estado    = data.estado;
+  if (data.urgencia  !== undefined) body.urgencia  = data.urgencia;
+  if (data.fecha     !== undefined) body.fecha     = data.fecha;
+  if (data.monto     !== undefined) body.monto     = data.monto;
+  if (data.cuotaList !== undefined) body.cuota_list = data.cuotaList;
+  if (data.valor     !== undefined) body.valor     = data.valor;
+  if (data.esfuerzo  !== undefined) body.esfuerzo  = data.esfuerzo;
+  if (data.subtasks  !== undefined) body.subtasks  = data.subtasks;
+  const res = await axios.patch(`${SUPABASE_URL}/rest/v1/tasks?id=eq.${id}`, body, { headers: SUPA_HEADERS });
+  const row = res.data && res.data[0];
+  if (!row) return { id }; // Supabase returned empty (field may not exist yet)
+  return { id:row.id, nombre:row.nombre, estado:row.estado, urgencia:row.urgencia, fecha:row.fecha, monto:row.monto, cuotas:row.cuotas, cuotaList:row.cuota_list||[], valor:row.valor||5, esfuerzo:row.esfuerzo||5, subtasks:row.subtasks||[] };
+}
 
-async function fetchTasks() {
-  document.getElementById("taskList").innerHTML = '<div style="text-align:center;padding:64px 0"><div class="spinner"></div><div style="color:var(--muted);font-size:14px">Cargando...</div></div>';
+async function dbDelete(id) {
+  await axios.delete(`${SUPABASE_URL}/rest/v1/tasks?id=eq.${id}`, { headers: SUPA_HEADERS });
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+function auth(req, res, next) {
+  if (req.headers["x-api-key"] !== API_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  next();
+}
+
+// ── REST API ──────────────────────────────────────────────────
+app.get("/tasks", auth, async (req, res) => {
   try {
-    const d = await api("/tasks"); allTasks = d.tasks || []; renderTasks();
-  } catch(e) {
-    document.getElementById("taskList").innerHTML = `<div class="empty">⚠️ ${e.message}</div>`;
-  }
-}
+    const tasks = await dbGetAll();
+    res.json({ tasks, total: tasks.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
-function priorityLabel(p) {
-  if (p >= 8) return { label: "Alta", cls: "p-alta" };
-  if (p >= 4) return { label: "Media", cls: "p-media" };
-  return { label: "Baja", cls: "p-baja" };
-}
-
-function getPriority(t) {
-  // Backwards compat: if old valor/esfuerzo system, convert to 1-10
-  if (t.prioridad !== undefined && t.prioridad !== null) return t.prioridad;
-  // Derive from old score: valor/esfuerzo, clamp to 1-10
-  const v = t.valor || 5, e = t.esfuerzo || 5;
-  return Math.min(10, Math.max(1, Math.round((v / e) * 5)));
-}
-
-function renderTasks() {
-  const activeTasks = allTasks.filter(t => t.estado !== "Listo");
-  const doneTasks   = allTasks.filter(t => t.estado === "Listo");
-
-  document.getElementById("s-total").textContent = allTasks.length;
-  document.getElementById("s-pend").textContent  = allTasks.filter(t => t.estado === "Pendiente").length;
-  document.getElementById("s-prog").textContent  = allTasks.filter(t => t.estado === "En progreso").length;
-  document.getElementById("s-done").textContent  = doneTasks.length;
-
-  let tasks;
-  if (curFilter === "active") tasks = activeTasks;
-  else if (curFilter === "all") tasks = activeTasks; // active shown in main, done in section
-  else tasks = activeTasks.filter(t => t.estado === curFilter);
-
-  // Sort by priority descending
-  tasks = [...tasks].sort((a, b) => getPriority(b) - getPriority(a));
-
-  document.getElementById("taskList").innerHTML = tasks.length
-    ? tasks.map((t, i) => renderTaskHTML(t, i)).join("")
-    : '<div class="empty">No hay tareas pendientes 🎉</div>';
-
-  // Completed section
-  const compSection = document.getElementById("completedSection");
-  const compList    = document.getElementById("completedList");
-  const compCount   = document.getElementById("completed-count");
-  compCount.textContent = doneTasks.length;
-  compSection.style.display = doneTasks.length ? "block" : "none";
-  if (compList.style.display !== "none") {
-    const sortedDone = [...doneTasks].sort((a, b) => getPriority(b) - getPriority(a));
-    compList.innerHTML = sortedDone.map((t, i) => renderTaskHTML(t, i)).join("");
-  }
-
-  // Re-open subtask panels that were open
-  openSubtasks.forEach(id => {
-    const panel = document.getElementById("sub-panel-" + id);
-    if (panel) panel.style.display = "block";
-  });
-}
-
-function renderTaskHTML(t, i) {
-  if (!t || !t.id) return "";
-  const isDone = t.estado === "Listo";
-  const isProg = t.estado === "En progreso";
-  const p = getPriority(t);
-  const pl = priorityLabel(p);
-  const totalM = (t.cuotaList || []).reduce((s,c) => s + (parseFloat(c.monto)||0), 0);
-  const pagM   = (t.cuotaList || []).filter(c => c.pagada).length;
-  const totalC = (t.cuotaList || []).length;
-  const subs   = t.subtasks || [];
-  const hasSubs = subs.length > 0;
-  const doneSubsCount = subs.filter(s => s.done).length;
-
-  return `<div class="task-card ${isDone ? "done" : isProg ? "" : ""}" style="animation-delay:${i*0.02}s">
-    <div class="task-row">
-      <div class="check ${isDone?"done":isProg?"progress":""}" onclick="toggleEstado(${t.id})">${isDone?"✓":isProg?"–":""}</div>
-      <input class="task-name" value="${esc(t.nombre)}" onblur="saveField(${t.id},'nombre',this.value)" onkeydown="if(event.key==='Enter')this.blur()" />
-      <div class="priority-cell">
-        <input class="priority-input" type="number" min="1" max="10" value="${p}"
-          onblur="savePriority(${t.id}, this.value)"
-          onkeydown="if(event.key==='Enter')this.blur()" />
-        <span class="p-badge ${pl.cls}">${pl.label}</span>
-      </div>
-      <select class="inline-select" onchange="saveField(${t.id},'estado',this.value)" style="${S_STYLE[t.estado]||""}">
-        ${STATUS.map(s => `<option value="${s}" ${t.estado===s?"selected":""}>${S_ICON[s]} ${s}</option>`).join("")}
-      </select>
-      <input type="date" class="inline-date" value="${t.fecha||""}" onchange="saveField(${t.id},'fecha',this.value)" />
-      ${totalM > 0
-        ? `<span class="cuota-link" onclick="openCuotas(${t.id})">$${totalM.toLocaleString()} ${pagM}/${totalC}</span>`
-        : `<span class="cuota-link empty" onclick="openCuotas(${t.id})">+ cuotas</span>`}
-      <button id="sub-btn-${t.id}" class="btn-subtask ${hasSubs ? "has-subs" : ""}" onclick="toggleSubtasks(${t.id})" title="${hasSubs ? doneSubsCount+"/"+subs.length+" subtareas" : "Agregar subtareas"}">
-        ${hasSubs ? `<span style="font-size:10px;font-weight:700">${doneSubsCount}/${subs.length}</span>` : "☰"}
-      </button>
-      <button class="btn-del" onclick="openConfirm('task',${t.id})">✕</button>
-    </div>
-    <div class="subtasks-panel" id="sub-panel-${t.id}" style="display:none">
-      <div id="sub-list-${t.id}">
-        ${subs.map((s, si) => `
-          <div class="subtask-item" id="sub-item-${t.id}-${si}">
-            <div class="sub-check ${s.done?"done":""}" onclick="toggleSubtask(${t.id}, ${si})">${s.done?"✓":""}</div>
-            <input class="sub-name ${s.done?"done":""}" value="${esc(s.text)}"
-              onblur="saveSubtaskName(${t.id}, ${si}, this.value)"
-              onkeydown="if(event.key==='Enter')this.blur()" />
-            <button class="btn-sub-del" onclick="deleteSubtask(${t.id}, ${si})">✕</button>
-          </div>`).join("")}
-      </div>
-      <div class="add-subtask-row">
-        <input class="add-subtask-input" id="sub-input-${t.id}" placeholder="Nueva subtarea..." onkeydown="if(event.key==='Enter')addSubtask(${t.id})" />
-        <button class="btn-add-sub" onclick="addSubtask(${t.id})">+ Agregar</button>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ── Priority ───────────────────────────────────────────────────
-async function savePriority(id, value) {
-  const p = Math.max(1, Math.min(10, parseInt(value) || 5));
-  const t = allTasks.find(t => t.id === id); if (!t) return;
-  t.prioridad = p; t.valor = p; t.esfuerzo = 1; // keep old fields for API compat
-  renderTasks();
-  try { await api(`/tasks/${id}`, "PATCH", { valor: p, esfuerzo: 1 }); }
-  catch(e) { showToast(e.message, "error"); fetchTasks(); }
-}
-
-// ── Subtasks ───────────────────────────────────────────────────
-function toggleSubtasks(id) {
-  const panel = document.getElementById("sub-panel-" + id);
-  if (!panel) return;
-  const isOpen = panel.style.display !== "none";
-  panel.style.display = isOpen ? "none" : "block";
-  if (isOpen) openSubtasks.delete(id); else openSubtasks.add(id);
-  if (!isOpen) document.getElementById("sub-input-" + id)?.focus();
-}
-
-function getSubtasks(id) {
-  const t = allTasks.find(t => t.id === id);
-  return t ? (t.subtasks || []) : [];
-}
-
-async function saveSubtasks(id, subs) {
-  const t = allTasks.find(t => t.id === id); if (!t) return;
-  t.subtasks = subs;
-
-  // Update sub-list in-place using string concat (no nested template literals)
-  const subList = document.getElementById("sub-list-" + id);
-  if (subList) {
-    subList.innerHTML = subs.map(function(s, si) {
-      var doneCls  = s.done ? "done" : "";
-      var checkMark = s.done ? "✓" : "";
-      var safeText = esc(s.text);
-      return '<div class="subtask-item">'
-        + '<div class="sub-check ' + doneCls + '" onclick="toggleSubtask(' + id + ',' + si + ')">' + checkMark + '</div>'
-        + '<input class="sub-name ' + doneCls + '" value="' + safeText + '" onblur="saveSubtaskName(' + id + ',' + si + ',this.value)" data-tid="' + id + '" data-si="' + si + '" />'
-        + '<button class="btn-sub-del" onclick="deleteSubtask(' + id + ',' + si + ')">✕</button>'
-        + '</div>';
-    }).join("");
-  }
-
-  // Update subtask badge button
-  var subBtn = document.getElementById("sub-btn-" + id);
-  if (subBtn) {
-    var doneCount = subs.filter(function(s){ return s.done; }).length;
-    subBtn.className = "btn-subtask" + (subs.length ? " has-subs" : "");
-    subBtn.innerHTML = subs.length
-      ? '<span style="font-size:10px;font-weight:700">' + doneCount + '/' + subs.length + '</span>'
-      : "☰";
-  }
-
-  try { await api("/tasks/" + id, "PATCH", { subtasks: subs }); }
-  catch(e) { showToast(e.message, "error"); }
-}
-async function addSubtask(id) {
-  const input = document.getElementById("sub-input-" + id);
-  if (!input) return;
-  const text = input.value.trim();
-  if (!text) return;
-  const subs = [...getSubtasks(id), { text, done: false }];
-  input.value = "";
-  await saveSubtasks(id, subs);
-}
-
-async function toggleSubtask(id, idx) {
-  const subs = [...getSubtasks(id)];
-  if (!subs[idx]) return;
-  subs[idx] = { ...subs[idx], done: !subs[idx].done };
-  await saveSubtasks(id, subs);
-}
-
-async function saveSubtaskName(id, idx, value) {
-  const subs = [...getSubtasks(id)];
-  if (!subs[idx] || subs[idx].text === value) return;
-  subs[idx] = { ...subs[idx], text: value };
-  await saveSubtasks(id, subs);
-}
-
-async function deleteSubtask(id, idx) {
-  const subs = getSubtasks(id).filter((_, i) => i !== idx);
-  await saveSubtasks(id, subs);
-}
-
-// ── Completed section ──────────────────────────────────────────
-let completedOpen = false;
-function toggleCompleted() {
-  completedOpen = !completedOpen;
-  const list  = document.getElementById("completedList");
-  const arrow = document.getElementById("completed-arrow");
-  list.style.display  = completedOpen ? "block" : "none";
-  arrow.className = "completed-arrow" + (completedOpen ? " open" : "");
-  if (completedOpen) {
-    const doneTasks = [...allTasks.filter(t => t.estado === "Listo")].sort((a,b) => getPriority(b) - getPriority(a));
-    list.innerHTML = doneTasks.length
-      ? doneTasks.map((t, i) => renderTaskHTML(t, i)).join("")
-      : '<div class="empty" style="padding:20px">No hay tareas completadas.</div>';
-  }
-}
-
-// ── Filter / sort ──────────────────────────────────────────────
-function setFilter(f, btn) {
-  curFilter = f; sortByPriority = false;
-  document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active"); renderTasks();
-}
-function setSortScore(btn) {
-  sortByPriority = true; curFilter = "active";
-  document.querySelectorAll(".filter-chip").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active"); renderTasks();
-}
-
-// ── CRUD ───────────────────────────────────────────────────────
-async function saveField(id, field, value) {
-  const t = allTasks.find(t => t.id === id); if (!t || t[field] === value) return;
-  t[field] = value; renderTasks();
-  try { await api(`/tasks/${id}`, "PATCH", { [field]: value }); }
-  catch(e) { showToast(e.message, "error"); fetchTasks(); }
-}
-
-async function toggleEstado(id) {
-  const t = allTasks.find(t => t.id === id); if (!t) return;
-  await saveField(id, "estado", STATUS[(STATUS.indexOf(t.estado)+1) % STATUS.length]);
-}
-
-function showNewRow() { document.getElementById("newRow").style.display="block"; setTimeout(()=>document.getElementById("new-nombre").focus(),50); }
-function hideNewRow() { document.getElementById("newRow").style.display="none"; }
-
-async function confirmNew() {
-  const nombre = document.getElementById("new-nombre").value.trim();
-  if (!nombre) { showToast("Escribe un nombre","error"); return; }
-  const p = Math.max(1, Math.min(10, parseInt(document.getElementById("new-prioridad").value)||5));
-  const body = {
-    nombre,
-    estado: document.getElementById("new-estado").value,
-    valor: p, esfuerzo: 1,
-    fecha: document.getElementById("new-fecha").value
-  };
+app.post("/tasks", auth, async (req, res) => {
   try {
-    const d = await api("/tasks","POST",body);
-    d.task.prioridad = p;
-    allTasks.unshift(d.task); hideNewRow(); renderTasks(); showToast("Tarea creada ✓");
-    document.getElementById("new-nombre").value = "";
-    document.getElementById("new-prioridad").value = "5";
-    document.getElementById("new-fecha").value = "";
-  } catch(e) { showToast(e.message,"error"); }
+    const task = await dbCreate(req.body);
+    res.json({ ok: true, task });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch("/tasks/:id", auth, async (req, res) => {
+  try {
+    const task = await dbUpdate(parseInt(req.params.id), req.body);
+    res.json({ ok: true, task });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/tasks/:id", auth, async (req, res) => {
+  try {
+    await dbDelete(parseInt(req.params.id));
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Telegram ──────────────────────────────────────────────────
+async function sendMessage(chatId, text) {
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: chatId, text, parse_mode: "Markdown",
+  }).catch(e => console.error("Send error:", e.response?.data));
 }
 
-// ── Cuotas ─────────────────────────────────────────────────────
-function openCuotas(id) {
-  cuotasTaskId = id; const t = allTasks.find(t => t.id===id); if (!t) return;
-  cuotaData = (t.cuotaList && t.cuotaList.length ? t.cuotaList : [{n:1,monto:"",pagada:false}]).map(c=>({...c}));
-  document.getElementById("cuotas-title").textContent = "Cuotas — " + t.nombre;
-  renderCuotasList(); document.getElementById("cuotasModal").style.display="flex";
-}
-function closeCuotas() { document.getElementById("cuotasModal").style.display="none"; }
-function renderCuotasList() {
-  document.getElementById("cuotas-list").innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <span style="font-size:13px;color:var(--muted);font-weight:500">N° cuotas:</span>
-      <input type="number" min="1" max="60" value="${cuotaData.length}" style="width:64px;background:var(--surface2);border:1px solid var(--border);padding:6px 10px;border-radius:var(--radius-sm);outline:none;font-size:14px;font-family:inherit" onchange="resizeCuotas(parseInt(this.value))" />
-    </div>
-    ${cuotaData.map((c,i)=>`<div class="cuota-row">
-      <span class="cuota-num">#${c.n}</span>
-      <input class="cuota-input" type="number" placeholder="Monto" value="${c.monto||""}" oninput="cuotaData[${i}].monto=this.value" />
-      <div class="cuota-check ${c.pagada?"paid":""}" onclick="cuotaData[${i}].pagada=!cuotaData[${i}].pagada;renderCuotasList()">${c.pagada?"✓":""}</div>
-    </div>`).join("")}
-    <div style="font-size:13px;color:var(--green);margin-top:12px;font-weight:600">
-      Total: $${cuotaData.reduce((s,c)=>s+(parseFloat(c.monto)||0),0).toLocaleString()} · ${cuotaData.filter(c=>c.pagada).length}/${cuotaData.length} pagadas
-    </div>`;
-}
-function resizeCuotas(n) {
-  n = Math.max(1, Math.min(60, n||1));
-  while (cuotaData.length < n) cuotaData.push({n:cuotaData.length+1,monto:"",pagada:false});
-  cuotaData = cuotaData.slice(0,n); renderCuotasList();
-}
-async function saveCuotas() {
-  const list = cuotaData.map(c=>({...c,monto:parseFloat(c.monto)||0}));
-  try {
-    await api(`/tasks/${cuotasTaskId}`,"PATCH",{cuotaList:list});
-    const t = allTasks.find(t=>t.id===cuotasTaskId); if(t) t.cuotaList=list;
-    closeCuotas(); renderTasks(); showToast("Cuotas guardadas ✓");
-  } catch(e) { showToast(e.message,"error"); }
-}
-
-// ── Confirm / Delete ───────────────────────────────────────────
-function openConfirm(type,id) { deletingType=type; deletingId=id; document.getElementById("confirmModal").style.display="flex"; }
-function closeConfirm() { deletingId=null; deletingType=null; document.getElementById("confirmModal").style.display="none"; }
-async function confirmDelete() {
-  try {
-    if (deletingType==="task") {
-      await api(`/tasks/${deletingId}`,"DELETE"); allTasks=allTasks.filter(t=>t.id!==deletingId); renderTasks();
-    } else {
-      await api(`/cuentas/${deletingId}`,"DELETE"); allCuentas=allCuentas.filter(c=>c.id!==deletingId); renderCuentas();
+// ── Tools ─────────────────────────────────────────────────────
+const TOOLS = [...CALENDAR_TOOLS,
+  {
+    name: "get_tasks",
+    description: "Obtiene todas las tareas del to-do list.",
+    input_schema: { type:"object", properties: { filtro: { type:"string" } } }
+  },
+  {
+    name: "create_task",
+    description: "Crea una nueva tarea. Llama UNA VEZ POR CADA tarea.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nombre:   { type:"string" },
+        estado:   { type:"string", enum:["Pendiente","En progreso","Listo"] },
+        urgencia: { type:"string", enum:["Alta","Media","Baja"] },
+        fecha:    { type:"string" },
+        monto:    { type:"number" },
+        cuotas:   { type:"integer" }
+      },
+      required: ["nombre"]
     }
-    closeConfirm(); showToast("Eliminado");
-  } catch(e) { showToast(e.message,"error"); }
-}
-
-document.getElementById("cuotasModal").addEventListener("click",e=>{if(e.target===document.getElementById("cuotasModal"))closeCuotas();});
-document.getElementById("confirmModal").addEventListener("click",e=>{if(e.target===document.getElementById("confirmModal"))closeConfirm();});
-
-// ══════════════════════════════════════════════════════════════
-// CUENTAS
-// ══════════════════════════════════════════════════════════════
-const CUENTAS_NAMES = ["Greyhound GG","Cachagua GG","Carelmapu","Hipotecario Cachagua","Hipotecario Ofis","Autopase","Gas Cachagua","Agua Cachagua","Luz Cachagua","Luz Stgo","Gas Stgo","Agua Stgo","Club de Golf Los Leones","Club de Golf Cachagua","Jardinero Cachagua","TC 1","TC 2","TC Int","VMA","Seduc","Gabriel","Mai","Jessica","Seguros Autos","Contribuciones"];
-let allCuentas = [];
-async function fetchCuentas() {
-  document.getElementById("cuentasList").innerHTML='<div style="text-align:center;padding:48px 0"><div class="spinner"></div></div>';
-  try { const d=await api("/cuentas"); allCuentas=d.cuentas||[]; renderCuentas(); }
-  catch(e) { showToast("Error cargando cuentas","error"); }
-}
-function variacion(cuenta) {
-  const prev=allCuentas.find(c=>c.nombre===cuenta.nombre&&((cuenta.mes===1&&c.mes===12&&c.anio===cuenta.anio-1)||(cuenta.mes>1&&c.mes===cuenta.mes-1&&c.anio===cuenta.anio)));
-  if(!prev||!prev.monto||!cuenta.monto)return null;
-  return((cuenta.monto-prev.monto)/prev.monto*100).toFixed(1);
-}
-function renderCuentas() {
-  const mes=parseInt(document.getElementById("filter-mes").value);
-  const anio=parseInt(document.getElementById("filter-anio").value);
-  const est=document.getElementById("filter-cestado").value;
-  let rows=allCuentas.filter(c=>c.mes===mes&&c.anio===anio&&(est==="all"||c.estado===est));
-  const total=rows.reduce((s,c)=>s+(parseFloat(c.monto)||0),0);
-  const pagadas=rows.filter(c=>c.estado==="Pagado").length;
-  const porPagar=rows.filter(c=>c.estado==="Por pagar").length;
-  const montoPend=rows.filter(c=>c.estado==="Por pagar").reduce((s,c)=>s+(parseFloat(c.monto)||0),0);
-  document.getElementById("c-total").textContent="$"+total.toLocaleString("es-CL");
-  document.getElementById("c-pagadas").textContent=pagadas;
-  document.getElementById("c-pagar").textContent=porPagar;
-  document.getElementById("c-pendiente").textContent="$"+montoPend.toLocaleString("es-CL");
-  if(!rows.length){
-    const mNombre=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes-1];
-    document.getElementById("cuentasList").innerHTML=`<div class="empty">No hay cuentas para ${mNombre} ${anio}.<br><br><button class="btn-primary" onclick="seedMonth()" style="margin-top:12px">+ Generar cuentas del mes</button></div>`;
-    return;
+  },
+  {
+    name: "update_task",
+    description: "Actualiza una tarea existente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:       { type:"integer" },
+        nombre:   { type:"string" },
+        estado:   { type:"string", enum:["Pendiente","En progreso","Listo"] },
+        urgencia: { type:"string", enum:["Alta","Media","Baja"] },
+        fecha:    { type:"string" },
+        monto:    { type:"number" }
+      },
+      required: ["id"]
+    }
+  },
+  {
+    name: "delete_task",
+    description: "Elimina una tarea por ID.",
+    input_schema: { type:"object", properties: { id: { type:"integer" } }, required:["id"] }
+  },
+  {
+    name: "mark_cuota_pagada",
+    description: "Marca cuotas como pagadas.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:           { type:"integer" },
+        cuota_numero: { type:"integer" },
+        pagada:       { type:"boolean" }
+      },
+      required: ["id","pagada"]
+    }
   }
-  document.getElementById("cuentasList").innerHTML=rows.map(c=>{
-    const v=variacion(c);
-    const variHtml=v===null?'<span style="color:var(--muted2);font-size:12px">—</span>':`<span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;background:${parseFloat(v)>0?"#fce8e6":"#e6f4ea"};color:${parseFloat(v)>0?"#d93025":"#1e8e3e"}">${parseFloat(v)>0?"+":""}${v}%</span>`;
-    const estStyle=c.estado==="Pagado"?"background:#e6f4ea;color:#1e8e3e":"background:#fef7e0;color:#f29900";
-    return`<div class="task">
-      <span style="font-size:14px;font-weight:500;padding:4px 8px">${esc(c.nombre)}</span>
-      <div style="display:flex;align-items:center;gap:4px">
-        <span style="font-size:12px;color:var(--muted2)">$</span>
-        <input type="number" value="${c.monto||""}" placeholder="0" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:13px;font-weight:600;outline:none;font-family:inherit;width:100%" onblur="saveCuenta(${c.id},'monto',parseFloat(this.value)||0)" onkeydown="if(event.key==='Enter')this.blur()" />
-      </div>
-      <select onchange="saveCuenta(${c.id},'estado',this.value)" style="${estStyle};border:none;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;outline:none;width:100%;-webkit-appearance:none">
-        <option value="Por pagar" ${c.estado==="Por pagar"?"selected":""}>⏳ Por pagar</option>
-        <option value="Pagado" ${c.estado==="Pagado"?"selected":""}>✅ Pagado</option>
-      </select>
-      ${variHtml}
-      <button class="btn-del" onclick="openConfirm('cuenta',${c.id})">✕</button>
-    </div>`;
-  }).join("");
-}
-async function saveCuenta(id,field,value) {
-  const c=allCuentas.find(c=>c.id===id); if(!c)return; c[field]=value; renderCuentas();
-  try { await api(`/cuentas/${id}`,"PATCH",{[field]:value}); } catch(e) { showToast(e.message,"error"); }
-}
-async function seedMonth() {
-  const mes=parseInt(document.getElementById("filter-mes").value);
-  const anio=parseInt(document.getElementById("filter-anio").value);
-  showToast("Generando cuentas...");
-  for(const nombre of CUENTAS_NAMES){
-    const exists=allCuentas.find(c=>c.nombre===nombre&&c.mes===mes&&c.anio===anio);
-    if(!exists){try{const d=await api("/cuentas","POST",{nombre,mes,anio,monto:0,estado:"Por pagar"});allCuentas.push(d.cuenta);}catch(e){}}
+];
+
+async function executeTool(name, input) {
+  if (["list_events","create_event","delete_event","list_calendars"].includes(name)) {
+    try { return await executeCalendarTool(name, input); }
+    catch(e) { return { ok:false, message: e.message }; }
   }
-  renderCuentas(); showToast("Cuentas generadas ✓");
+  if (name === "get_tasks") {
+    let tasks = await dbGetAll();
+    if (input.filtro) {
+      const f = input.filtro;
+      tasks = tasks.filter(t => t.estado===f || t.urgencia===f || t.nombre.toLowerCase().includes(f.toLowerCase()));
+    }
+    return { ok:true, data:tasks, total:tasks.length };
+  }
+  if (name === "create_task") {
+    const numCuotas = input.cuotas || 1;
+    const cuotaList = Array.from({ length:numCuotas }, (_,i) => ({ n:i+1, monto: input.monto ? input.monto/numCuotas : 0, pagada:false }));
+    const task = await dbCreate({ ...input, cuotaList });
+    return { ok:true, task, message:`Tarea #${task.id} "${task.nombre}" creada.` };
+  }
+  if (name === "update_task") {
+    const task = await dbUpdate(input.id, input);
+    return { ok:true, task, message:`Tarea #${input.id} actualizada.` };
+  }
+  if (name === "delete_task") {
+    await dbDelete(input.id);
+    return { ok:true, message:`Tarea #${input.id} eliminada.` };
+  }
+  if (name === "mark_cuota_pagada") {
+    const tasks = await dbGetAll();
+    const task  = tasks.find(t => t.id === input.id);
+    if (!task) return { ok:false, message:`No encontré tarea #${input.id}` };
+    if (input.cuota_numero) {
+      const c = task.cuotaList.find(c => c.n === input.cuota_numero);
+      if (c) c.pagada = input.pagada;
+    } else {
+      task.cuotaList.forEach(c => c.pagada = input.pagada);
+    }
+    await dbUpdate(input.id, { cuotaList: task.cuotaList });
+    const pagadas = task.cuotaList.filter(c=>c.pagada).length;
+    return { ok:true, message:`${pagadas}/${task.cuotaList.length} cuotas pagadas.` };
+  }
+  return { ok:false, message:"Tool desconocida" };
 }
 
-// Set current month/year in cuentas filters
-(function() {
-  const now = new Date();
-  const mesEl = document.getElementById("filter-mes");
-  const anioEl = document.getElementById("filter-anio");
-  if (mesEl) mesEl.value = now.getMonth() + 1;
-  if (anioEl) anioEl.value = now.getFullYear();
-})();
-
-// ══════════════════════════════════════════════════════════════
-// EMAILS (unchanged from original)
-// ══════════════════════════════════════════════════════════════
-var CLS_CFG={priorizado:{bg:"#fce8e6",color:"#d93025",label:"Priorizado"},auto_reply:{bg:"#e8f0fe",color:"#1a73e8",label:"Resp. Automatica"},spam:{bg:"#f1f3f4",color:"#9aa0a6",label:"Spam"}};
-var allEmails=[],emailFilter="all",draftEmailId=null;
-function decodeHtmlEntities(str){var txt=document.createElement("textarea");txt.innerHTML=str;return txt.value;}
-async function fetchEmails(){
-  document.getElementById("emailList").innerHTML='<div style="text-align:center;padding:48px 0"><div class="spinner"></div></div>';
-  try{var d=await api("/emails?status=pending");allEmails=(d.emails||[]).filter(function(e){var from=(e.from_email||"").toLowerCase();return!from.includes("cristobal@tantauco.vc")&&!from.includes("cristobalpinera");});renderEmails();}
-  catch(ex){showToast("Error cargando emails","error");}
+function cleanHistory(msgs, maxPairs=5) {
+  const clean = [];
+  for (const msg of msgs) {
+    if (typeof msg.content==="string" && msg.content.trim()) clean.push(msg);
+  }
+  return clean.slice(-(maxPairs*2));
 }
-async function refreshEmails(){await fetchEmails();showToast("Actualizado");}
-function setEmailFilter(filter,btn){emailFilter=filter;document.querySelectorAll("#view-emails .filter-chip").forEach(function(b){b.classList.remove("active");});btn.classList.add("active");renderEmails();}
-function getEffectiveCls(e){var corr=e.user_correction?JSON.parse(e.user_correction):null;return(corr&&corr.classification)?corr.classification:(e.classification||"spam");}
-function updateSelectionUI(){var checked=document.querySelectorAll(".email-cb:checked");var btn=document.getElementById("btn-exec-selected");var countEl=document.getElementById("sel-count");if(checked.length>0){btn.style.display="inline-block";countEl.textContent=checked.length;}else{btn.style.display="none";}}
-function emailSelectAll(){var cbs=document.querySelectorAll(".email-cb");var allChecked=Array.from(cbs).every(function(c){return c.checked;});cbs.forEach(function(c){c.checked=!allChecked;});updateSelectionUI();}
-async function executeSelected(){var selected=Array.from(document.querySelectorAll(".email-cb:checked")).map(function(c){return c.dataset.id;});if(!selected.length){showToast("Selecciona al menos un email","error");return;}var btn=document.getElementById("btn-exec-selected");btn.disabled=true;btn.style.opacity="0.7";try{var r=await api("/emails/execute","POST",{gmailIds:selected});showToast((r.done||selected.length)+" ejecutados correctamente");allEmails=allEmails.filter(function(e){return!selected.includes(e.gmail_id);});renderEmails();}catch(ex){showToast("Error: "+ex.message,"error");}finally{btn.disabled=false;btn.style.opacity="1";updateSelectionUI();}}
-function makeEmailCard(e,i){var cls=getEffectiveCls(e);var cfg=CLS_CFG[cls]||CLS_CFG.spam;var corr=e.user_correction?JSON.parse(e.user_correction):null;var draft=(corr&&corr.draft_reply)?corr.draft_reply:(e.draft_reply||"");var fromClean=decodeHtmlEntities((e.from_email||"").replace(/<.*>/,"").trim());var snippet=decodeHtmlEntities(e.snippet||"");var subject=decodeHtmlEntities(e.subject||"Sin asunto");var id=e.gmail_id;var el=document.createElement("div");el.style.cssText="background:var(--surface);border:1px solid var(--border);border-left:3px solid "+cfg.color+";border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow)";var header=document.createElement("div");header.style.cssText="display:flex;align-items:flex-start;gap:12px;padding:14px 16px";var cb=document.createElement("input");cb.type="checkbox";cb.className="email-cb";cb.dataset.id=id;cb.style.cssText="width:16px;height:16px;cursor:pointer;margin-top:3px;flex-shrink:0";cb.addEventListener("change",updateSelectionUI);var info=document.createElement("div");info.style.cssText="flex:1;min-width:0;cursor:pointer";info.onclick=function(){toggleEmail(id);};var titleRow=document.createElement("div");titleRow.style.cssText="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px";var subjectEl=document.createElement("span");subjectEl.style.cssText="font-size:14px;font-weight:600;color:var(--text)";subjectEl.textContent=subject;var badge=document.createElement("span");badge.style.cssText="font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:"+cfg.bg+";color:"+cfg.color;badge.textContent=cfg.label;titleRow.appendChild(subjectEl);titleRow.appendChild(badge);if(draft){var draftBadge=document.createElement("span");draftBadge.style.cssText="font-size:10px;background:#e8f0fe;color:#1a73e8;padding:2px 7px;border-radius:4px;font-weight:600";draftBadge.textContent="borrador";titleRow.appendChild(draftBadge);}var fromEl=document.createElement("div");fromEl.style.cssText="font-size:12px;color:var(--muted);margin-bottom:3px";fromEl.textContent=fromClean;var snippetEl=document.createElement("div");snippetEl.style.cssText="font-size:12px;color:var(--muted2);line-height:1.4";snippetEl.textContent=snippet.slice(0,120)+(snippet.length>120?"...":"");info.appendChild(titleRow);info.appendChild(fromEl);info.appendChild(snippetEl);header.appendChild(cb);header.appendChild(info);if(cls==="priorizado"){var starBtn=document.createElement("button");var isStarred=corr&&corr.starred;starBtn.id="star-"+id;starBtn.style.cssText="background:none;border:none;font-size:20px;cursor:pointer;padding:0 4px;flex-shrink:0;line-height:1;opacity:"+(isStarred?"1":"0.25")+";transition:opacity 0.15s";starBtn.textContent="★";starBtn.onclick=function(ev){ev.stopPropagation();toggleStar(id);};header.appendChild(starBtn);}if(cls==="spam"){var spamToggle=document.createElement("div");var isSpamMark=corr&&corr.markAsSpam;spamToggle.id="spamtog-"+id;spamToggle.style.cssText="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;padding:2px 4px";var spamIcon=document.createElement("span");spamIcon.id="spamicon-"+id;spamIcon.style.cssText="font-size:16px;opacity:"+(isSpamMark?"1":"0.25")+";transition:opacity 0.15s";spamIcon.textContent="🚫";var spamLabel=document.createElement("span");spamLabel.style.cssText="font-size:9px;color:var(--muted2);white-space:nowrap";spamLabel.textContent=isSpamMark?"spam Gmail":"+ spam Gmail";spamToggle.appendChild(spamIcon);spamToggle.appendChild(spamLabel);spamToggle.onclick=function(ev){ev.stopPropagation();toggleSpamMark(id);};header.appendChild(spamToggle);}el.appendChild(header);var panel=document.createElement("div");panel.id="exp-"+id;panel.style.cssText="display:none;border-top:1px solid var(--border);padding:14px 16px;background:var(--surface2)";var bodyDiv=document.createElement("div");bodyDiv.id="body-"+id;bodyDiv.style.cssText="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;max-height:220px;overflow-y:auto;margin-bottom:12px";bodyDiv.textContent="Click para cargar...";panel.appendChild(bodyDiv);if(e.ai_reason){var reasonEl=document.createElement("div");reasonEl.style.cssText="font-size:12px;color:var(--muted2);padding:7px 12px;background:#eff6ff;border-radius:6px;margin-bottom:12px";reasonEl.textContent="IA: "+decodeHtmlEntities(e.ai_reason);panel.appendChild(reasonEl);}var btns=document.createElement("div");btns.style.cssText="display:flex;gap:8px;flex-wrap:wrap";if(cls==="priorizado"){btns.appendChild(makeBtn("Marcar estrella","primary",function(){execStar(id);}));btns.appendChild(makeBtn("Mover a Auto-resp","outline",function(){doMoveEmail(id,"auto_reply");}));btns.appendChild(makeBtn("Mover a Spam","outline",function(){doMoveEmail(id,"spam");}));}else if(cls==="auto_reply"){btns.appendChild(makeBtn(draft?"Ver/Editar borrador":"Sin borrador","primary",function(){openDraft(id);}));btns.appendChild(makeBtn("Mover a Spam","outline",function(){doMoveEmail(id,"spam");}));btns.appendChild(makeBtn("Mover a Priorizado","outline",function(){doMoveEmail(id,"priorizado");}));}else{var delBtn=makeBtn("Eliminar spam","primary",function(){execSpam(id);});delBtn.style.background="var(--red)";delBtn.style.border="none";btns.appendChild(delBtn);btns.appendChild(makeBtn("Mover a Auto-resp","outline",function(){doMoveEmail(id,"auto_reply");}));btns.appendChild(makeBtn("Mover a Priorizado","outline",function(){doMoveEmail(id,"priorizado");}));}panel.appendChild(btns);el.appendChild(panel);return el;}
-function makeBtn(label,type,fn){var b=document.createElement("button");b.className=type==="primary"?"btn-primary":"btn-outline";b.style.cssText="font-size:12px;padding:5px 12px";b.textContent=label;b.onclick=fn;return b;}
-function renderEmails(){var priorizado=allEmails.filter(function(e){return getEffectiveCls(e)==="priorizado";});var autoReply=allEmails.filter(function(e){return getEffectiveCls(e)==="auto_reply";});var spam=allEmails.filter(function(e){return getEffectiveCls(e)==="spam";});document.getElementById("e-priorizado").textContent=priorizado.length;document.getElementById("e-auto").textContent=autoReply.length;document.getElementById("e-spam").textContent=spam.length;var rows;if(emailFilter==="priorizado")rows=priorizado;else if(emailFilter==="auto_reply")rows=autoReply;else if(emailFilter==="spam")rows=spam;else rows=allEmails;var list=document.getElementById("emailList");document.getElementById("btn-exec-selected").style.display="none";document.getElementById("sel-count").textContent="0";if(!rows.length){list.innerHTML='<div class="empty">No hay emails en esta categoria.</div>';return;}list.innerHTML="";rows.forEach(function(e,i){list.appendChild(makeEmailCard(e,i));});}
-async function toggleEmail(gmailId){var el=document.getElementById("exp-"+gmailId);if(!el)return;if(el.style.display!=="none"){el.style.display="none";return;}el.style.display="block";var bodyEl=document.getElementById("body-"+gmailId);if(bodyEl&&bodyEl.dataset.loaded!=="1"){bodyEl.textContent="Cargando...";try{var d=await api("/emails/"+gmailId+"/body");bodyEl.textContent=d.body||"(sin cuerpo)";bodyEl.dataset.loaded="1";}catch(ex){bodyEl.textContent="(error cargando cuerpo)";}}}
-async function doMoveEmail(gmailId,newCls){var email=allEmails.find(function(e){return e.gmail_id===gmailId;});if(email){var corr=email.user_correction?JSON.parse(email.user_correction):{};var actionMap={priorizado:"estrella",auto_reply:"auto_reply",spam:"eliminar"};corr.classification=newCls;corr.action=actionMap[newCls];email.user_correction=JSON.stringify(corr);email.classification=newCls;}renderEmails();var cfg=CLS_CFG[newCls];showToast("Movido a "+(cfg?cfg.label:newCls));try{await api("/emails/move","POST",{gmailId:gmailId,classification:newCls});}catch(ex){console.warn("Backend sync failed:",ex.message);}}
-async function execStar(gmailId){try{await api("/emails/execute","POST",{gmailIds:[gmailId]});allEmails=allEmails.filter(function(e){return e.gmail_id!==gmailId;});renderEmails();showToast("Marcado con estrella en Gmail");}catch(ex){showToast(ex.message,"error");}}
-async function execSpam(gmailId){try{await api("/emails/execute","POST",{gmailIds:[gmailId]});allEmails=allEmails.filter(function(e){return e.gmail_id!==gmailId;});renderEmails();showToast("Eliminado como spam");}catch(ex){showToast(ex.message,"error");}}
-function openDraft(gmailId){var email=allEmails.find(function(e){return e.gmail_id===gmailId;});if(!email)return;var corr=email.user_correction?JSON.parse(email.user_correction):null;draftEmailId=gmailId;document.getElementById("dm-subject").textContent=decodeHtmlEntities(email.subject||"Sin asunto");document.getElementById("dm-from").textContent=decodeHtmlEntities((email.from_email||"").replace(/<.*>/,"").trim());document.getElementById("dm-draft").value=(corr&&corr.draft_reply)?corr.draft_reply:(email.draft_reply||"");document.getElementById("draftModal").style.display="flex";}
-function toggleSpamMark(gmailId){var email=allEmails.find(function(e){return e.gmail_id===gmailId;});if(!email)return;var corr=email.user_correction?JSON.parse(email.user_correction):{classification:"spam",action:"marcar_spam"};corr.markAsSpam=!corr.markAsSpam;email.user_correction=JSON.stringify(corr);var icon=document.getElementById("spamicon-"+gmailId);var tog=document.getElementById("spamtog-"+gmailId);if(icon)icon.style.opacity=corr.markAsSpam?"1":"0.25";if(tog)tog.querySelector("span:last-child").textContent=corr.markAsSpam?"spam Gmail":"+ spam Gmail";api("/emails/"+gmailId,"PATCH",{user_correction:JSON.stringify(corr)}).then(function(){showToast(corr.markAsSpam?"Se marcara como spam en Gmail al ejecutar":"Solo se borrara");}).catch(function(ex){showToast(ex.message,"error");});}
-function toggleStar(gmailId){var email=allEmails.find(function(e){return e.gmail_id===gmailId;});if(!email)return;var corr=email.user_correction?JSON.parse(email.user_correction):{classification:"priorizado",action:"estrella"};corr.starred=!corr.starred;corr.action=corr.starred?"estrella":"none";email.user_correction=JSON.stringify(corr);var btn=document.getElementById("star-"+gmailId);if(btn){btn.style.opacity=corr.starred?"1":"0.25";}api("/emails/"+gmailId,"PATCH",{user_correction:JSON.stringify(corr)}).then(function(){showToast(corr.starred?"Se marcara con estrella al ejecutar":"Estrella removida");}).catch(function(ex){showToast(ex.message,"error");});}
-async function scanGmail(){var btn=document.getElementById("btn-scan");btn.textContent="Escaneando...";btn.disabled=true;try{var r=await api("/emails/scan-now","POST",{});showToast("Scan completo: "+r.count+" emails");await fetchEmails();}catch(ex){showToast("Error en scan: "+ex.message,"error");}finally{btn.textContent="Revisar Gmail";btn.disabled=false;}}
-function closeDraftModal(){document.getElementById("draftModal").style.display="none";draftEmailId=null;}
-async function sendDraftFromModal(){if(!draftEmailId)return;var newDraft=document.getElementById("dm-draft").value.trim();if(!newDraft){showToast("El borrador esta vacio","error");return;}try{var email=allEmails.find(function(e){return e.gmail_id===draftEmailId;});var corr=(email&&email.user_correction)?JSON.parse(email.user_correction):{classification:"auto_reply",action:"auto_reply"};corr.draft_reply=newDraft;await api("/emails/"+draftEmailId,"PATCH",{user_correction:JSON.stringify(corr)});await api("/emails/execute","POST",{gmailIds:[draftEmailId]});allEmails=allEmails.filter(function(e){return e.gmail_id!==draftEmailId;});closeDraftModal();renderEmails();showToast("Respuesta enviada");}catch(ex){showToast(ex.message,"error");}}
-document.addEventListener("DOMContentLoaded",function(){var dm=document.getElementById("draftModal");if(dm)dm.addEventListener("click",function(e){if(e.target===dm)closeDraftModal();});});
 
-// ── Delegated Enter key for dynamically added subtask inputs ─────
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && e.target.classList.contains('sub-name')) {
-    e.target.blur();
+async function runAgent(chatId, userMessage) {
+  if (!histories[chatId]) histories[chatId] = [];
+  const today = new Date().toLocaleDateString("es-CL", {weekday:"long",year:"numeric",month:"long",day:"numeric",timeZone:"America/Santiago"});
+  const todayISO = new Date().toLocaleDateString("en-CA", {timeZone:"America/Santiago"});
+  const systemPrompt = `Eres un asistente de productividad personal que gestiona el to-do list del usuario.
+Eres conciso, amable y respondes en español.
+Hoy es ${today} (${todayISO}). Usa SIEMPRE esta fecha como referencia para calcular fechas relativas como "hoy", "mañana", "el viernes", etc.
+Para listar tareas usa este formato:
+• #ID EMOJI *Nombre* — URGENCIA
+Estados: ⏳ Pendiente | 🔄 En progreso | ✅ Listo
+Urgencia: 🔴 Alta | 🟡 Media | 🟢 Baja
+Cuando el usuario pida agregar MÚLTIPLES tareas, llama create_task individualmente por cada una.
+Para eventos de calendario, las fechas en ISO 8601 con timezone Chile: ${todayISO}T14:00:00-03:00
+Confirma las acciones brevemente.`;
+
+  const safeHistory = cleanHistory(histories[chatId]);
+  let messages = [...safeHistory, { role:"user", content:userMessage }];
+
+  for (let i=0; i<25; i++) {
+    const response = await axios.post("https://api.anthropic.com/v1/messages", {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2048,
+      system: systemPrompt,
+      tools: TOOLS,
+      messages,
+    }, {
+      headers: { "x-api-key":ANTHROPIC_KEY, "anthropic-version":"2023-06-01", "content-type":"application/json" }
+    });
+
+    const { content, stop_reason } = response.data;
+    messages.push({ role:"assistant", content });
+
+    if (stop_reason === "end_turn") {
+      const text = content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+      histories[chatId] = cleanHistory([...safeHistory, { role:"user", content:userMessage }, { role:"assistant", content:text }]);
+      return text || "✓ Listo.";
+    }
+
+    if (stop_reason === "tool_use") {
+      const toolResults = [];
+      for (const block of content) {
+        if (block.type === "tool_use") {
+          const result = await executeTool(block.name, block.input);
+          toolResults.push({ type:"tool_result", tool_use_id:block.id, content:JSON.stringify(result) });
+        }
+      }
+      messages.push({ role:"user", content:toolResults });
+    }
+  }
+  return "No pude completar la acción, intenta de nuevo.";
+}
+
+// ── Gmail OAuth ───────────────────────────────────────────────
+app.get('/gmail/start', (req, res) => res.redirect(getGmailAuthUrl()));
+
+app.get('/gmail/callback', async (req, res) => {
+  const { code } = req.query;
+  try {
+    const { google } = require('googleapis');
+    const oauth2 = new (require('googleapis').google.auth.OAuth2)(
+      process.env.GCAL_CLIENT_ID, process.env.GCAL_CLIENT_SECRET,
+      'https://tobin-bot-production.up.railway.app/gmail/callback'
+    );
+    const { tokens } = await oauth2.getToken(code);
+    await saveGmailTokens(tokens);
+    res.send('<h2>✅ Gmail conectado</h2><p>Puedes cerrar esta ventana.</p>');
+  } catch(e) { res.send('<h2>Error: ' + e.message + '</h2>'); }
+});
+
+// ── Email API ─────────────────────────────────────────────────
+app.get('/emails', auth, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const emails = await getEmailBatch(status);
+    res.json({ emails });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/emails/scan', auth, async (req, res) => {
+  try {
+    const result = await scanEmails(req.body.hours || 13, sendTelegramMessage);
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/emails/execute', auth, async (req, res) => {
+  try {
+    const { gmailIds } = req.body;
+    console.log("Ejecutando emails:", gmailIds);
+    const result = await executeApproved(gmailIds);
+    console.log("Resultado:", result);
+    res.json(result);
+  } catch(e) {
+    console.error("Error en /emails/execute:", e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// ── Init ───────────────────────────────────────────────────────
-fetchTasks();
-</script>
-</body>
-</html>
+app.post('/emails/skip', auth, async (req, res) => {
+  try {
+    const { gmailIds } = req.body;
+    await skipEmails(gmailIds);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/emails/move', auth, async (req, res) => {
+  try {
+    const { gmailId, classification } = req.body;
+    await moveEmail(gmailId, classification);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/emails/scan-now', auth, async (req, res) => {
+  try {
+    const result = await scanEmails(48, sendTelegramMessage);
+    res.json({ ok: true, ...result });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/emails/:gmailId/body', auth, async (req, res) => {
+  try {
+    const body = await getEmailBody(req.params.gmailId);
+    res.json({ body });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/emails/:gmailId', auth, async (req, res) => {
+  try {
+    const { updateEmail } = require('./gmail');
+    await updateEmail(req.params.gmailId, req.body);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/oauth/start', (req, res) => {
+  const oauth2 = getOAuth2Client();
+  const url = oauth2.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/calendar'],
+    prompt: 'consent'
+  });
+  res.redirect(url);
+});
+
+app.get('/oauth/callback', async (req, res) => {
+  const { code } = req.query;
+  try {
+    const oauth2 = getOAuth2Client();
+    const { tokens } = await oauth2.getToken(code);
+    setTokens(tokens);
+    console.log('Google Calendar autorizado');
+    res.send('<h2>Google Calendar conectado</h2><p>Puedes cerrar esta ventana.</p>');
+  } catch(e) {
+    res.send('<h2>Error: ' + e.message + '</h2>');
+  }
+});
+
+// ── Expense helpers ───────────────────────────────────────────
+const { processExpense } = require('./expense-agent');
+
+// ── Voice transcription (OpenAI Whisper) ─────────────────────
+const FormData = require('form-data');
+
+async function transcribeVoice(fileBuffer, mimeType) {
+  const form = new FormData();
+  // Telegram envía audio como .oga (ogg/opus) — Whisper lo acepta como .ogg
+  form.append('file', fileBuffer, { filename: 'audio.ogg', contentType: mimeType || 'audio/ogg' });
+  form.append('model', 'whisper-1');
+  form.append('language', 'es');
+
+  const res = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+    headers: {
+      ...form.getHeaders(),
+      'Authorization': `Bearer ${process.env.OPENAI_KEY}`,
+    },
+  });
+  return res.data.text;
+}
+
+async function downloadTelegramFile(fileId) {
+  const infoRes = await axios.get(`${TELEGRAM_API}/getFile?file_id=${fileId}`);
+  const filePath = infoRes.data.result.file_path;
+  const url = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
+  const fileRes = await axios.get(url, { responseType: 'arraybuffer' });
+  return Buffer.from(fileRes.data);
+}
+
+function buildExpenseReply(result) {
+  let msg = `✅ Gasto registrado en Airtable\n\n`;
+  msg += `📌 Item: ${result.item}\n`;
+  msg += `📅 Fecha: ${result.fechaGasto}\n`;
+  msg += `🗓 Mes: ${result.mes} ${result.anio}\n`;
+  msg += `💰 Total: $${result.totalCLP.toLocaleString('es-CL')} CLP`;
+  if (result.moneda && result.moneda !== 'CLP') {
+    const rate = result.conversionRate ? Math.round(result.conversionRate).toLocaleString('es-CL') : '?';
+    msg += `\n   (${result.moneda} ${result.totalOriginal.toLocaleString('es-CL')} x $${rate} = CLP)`;
+  }
+  msg += `\n📎 Respaldo: imagen subida`;
+  return msg;
+}
+
+// ── Webhook ───────────────────────────────────────────────────
+app.post("/webhook", async (req, res) => {
+  res.sendStatus(200);
+  const update = req.body;
+  const msg = update.message;
+  if (!msg) return;
+
+  const chatId = msg.chat.id;
+
+  // Foto enviada directamente
+  if (msg.photo) {
+    await sendMessage(chatId, '⏳ Procesando boleta...');
+    try {
+      const photo = msg.photo.at(-1);
+      const buffer = await downloadTelegramFile(photo.file_id);
+      const result = await processExpense(buffer, 'image/jpeg', `boleta_${Date.now()}.jpg`, msg.date);
+      await sendMessage(chatId, buildExpenseReply(result));
+    } catch(e) {
+      console.error('Error foto:', e.message);
+      await sendMessage(chatId, `❌ Error procesando imagen: ${e.message}`);
+    }
+    return;
+  }
+
+  // Documento (PDF o imagen como archivo)
+  if (msg.document) {
+    const doc = msg.document;
+    const accepted = ['application/pdf','image/jpeg','image/png','image/jpg','image/webp'];
+    if (!accepted.includes(doc.mime_type)) {
+      await sendMessage(chatId, '⚠️ Solo acepto fotos o PDFs para registrar gastos.');
+      return;
+    }
+    await sendMessage(chatId, '⏳ Procesando documento...');
+    try {
+      const buffer = await downloadTelegramFile(doc.file_id);
+      const fileName = doc.file_name || `doc_${Date.now()}`;
+      const result = await processExpense(buffer, doc.mime_type, fileName, msg.date);
+      await sendMessage(chatId, buildExpenseReply(result));
+    } catch(e) {
+      console.error('Error documento:', e.message);
+      await sendMessage(chatId, `❌ Error procesando documento: ${e.message}`);
+    }
+    return;
+  }
+
+  // Audio / nota de voz
+  if (msg.voice || msg.audio) {
+    const audio = msg.voice || msg.audio;
+    try {
+      await axios.post(`${TELEGRAM_API}/sendChatAction`, { chat_id: chatId, action: "typing" });
+      const buffer = await downloadTelegramFile(audio.file_id);
+      const mimeType = audio.mime_type || 'audio/ogg';
+      const transcript = await transcribeVoice(buffer, mimeType);
+      console.log(`Voz transcrita [${chatId}]:`, transcript);
+      const reply = await runAgent(chatId, transcript);
+      await sendMessage(chatId, `🎤 _"${transcript}"_\n\n${reply}`);
+    } catch(e) {
+      console.error('Error voz:', e.response?.data || e.message);
+      await sendMessage(chatId, `❌ No pude entender el audio: ${e.message}`);
+    }
+    return;
+  }
+
+  // Texto (comportamiento original)
+  if (msg.text) {
+    try {
+      await axios.post(`${TELEGRAM_API}/sendChatAction`, { chat_id: chatId, action: "typing" });
+      const reply = await runAgent(chatId, msg.text);
+      await sendMessage(chatId, reply);
+    } catch(e) {
+      console.error("Agent error:", e.response?.data || e.message);
+      await sendMessage(chatId, "❌ Ocurrió un error. Intenta de nuevo.");
+    }
+  }
+});
+
+const RESEND_KEY = process.env.RESEND_KEY;
+const EMAIL_TO   = process.env.EMAIL_TO;
+
+async function sendDailyDigest() {
+  try {
+    const tasks = await dbGetAll();
+    const pending = tasks.filter(t => t.estado !== "Listo");
+    const top3 = [...pending]
+      .map(t => ({ ...t, score: (t.valor||5) / (t.esfuerzo||5) }))
+      .sort((a,b) => b.score - a.score)
+      .slice(0, 3);
+
+    if (!top3.length) return console.log("No hay tareas pendientes.");
+
+    const today = new Date().toLocaleDateString("es-CL", {
+      weekday:"long", year:"numeric", month:"long", day:"numeric", timeZone:"America/Santiago"
+    });
+    const todayCap = today.charAt(0).toUpperCase() + today.slice(1);
+    const dateShort = new Date().toLocaleDateString("es-CL", {
+      day:"2-digit", month:"2-digit", year:"numeric", timeZone:"America/Santiago"
+    });
+
+    const rows = top3.map((t, i) => {
+      const score = Math.round(t.score * 10) / 10;
+      const estado = t.estado === "En progreso" ? "🔄 En progreso" : "⏳ Pendiente";
+      const numColor   = i===0 ? "#1a73e8" : i===1 ? "#34a853" : "#f29900";
+      const scoreColor = score >= 2 ? "#1e8e3e" : score >= 1 ? "#f29900" : "#5f6368";
+      const scoreBg    = score >= 2 ? "#e6f4ea" : score >= 1 ? "#fef7e0" : "#f1f3f4";
+      return `<div style="padding:20px 24px;border-bottom:1px solid #e8eaed">
+        <div style="display:flex;align-items:flex-start;gap:14px">
+          <div style="min-width:28px;height:28px;border-radius:50%;background:${numColor};color:#fff;font-size:13px;font-weight:700;text-align:center;line-height:28px;flex-shrink:0">${i+1}</div>
+          <div style="flex:1">
+            <p style="margin:0 0 8px;font-size:16px;font-weight:600;color:#202124;line-height:1.4">${t.nombre}</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <span style="font-size:12px;color:#5f6368">${estado}</span>
+              <span style="color:#dadce0;font-size:12px">·</span>
+              <span style="font-size:12px;color:#5f6368">Valor ${t.valor||5} / Esfuerzo ${t.esfuerzo||5}</span>
+              <span style="color:#dadce0;font-size:12px">·</span>
+              <span style="background:${scoreBg};color:${scoreColor};font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px">Score ${score}</span>
+              ${t.fecha ? `<span style="color:#dadce0;font-size:12px">·</span><span style="font-size:12px;color:#5f6368">📅 ${t.fecha}</span>` : ""}
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f8f9fa;font-family:Roboto,Arial,sans-serif">
+  <div style="max-width:600px;margin:0 auto;padding:32px 16px">
+    <div style="margin-bottom:24px">
+      <p style="margin:0 0 4px;font-size:12px;color:#5f6368;letter-spacing:0.5px;text-transform:uppercase;font-weight:600">To-Do diario</p>
+      <h1 style="margin:0;font-size:26px;font-weight:700;color:#202124">${todayCap}</h1>
+    </div>
+    <div style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(60,64,67,0.12);overflow:hidden;margin-bottom:20px">
+      <div style="padding:14px 24px;border-bottom:1px solid #e8eaed;background:#f8f9fa">
+        <p style="margin:0;font-size:11px;font-weight:600;color:#5f6368;letter-spacing:0.5px;text-transform:uppercase">Tus 3 tareas prioritarias</p>
+      </div>
+      ${rows}
+      <div style="padding:14px 24px;background:#f8f9fa">
+        <p style="margin:0;font-size:13px;color:#5f6368">${pending.length} tareas pendientes en total</p>
+      </div>
+    </div>
+    <div style="text-align:center;margin-bottom:28px">
+      <a href="https://tobin-todo-web.vercel.app" style="display:inline-block;background:#1a73e8;color:#ffffff;text-decoration:none;padding:11px 32px;border-radius:8px;font-size:14px;font-weight:600">Ver todas las tareas →</a>
+    </div>
+    <p style="text-align:center;font-size:12px;color:#9aa0a6;margin:0">To-Do Tobin · <a href="https://tobin-todo-web.vercel.app" style="color:#9aa0a6;text-decoration:none">tantauco.vc</a></p>
+  </div>
+</body></html>`;
+
+    await axios.post("https://api.resend.com/emails", {
+      from:    "To-Do Tobin <noreply@tantauco.vc>",
+      to:      EMAIL_TO,
+      subject: `To-Do ${dateShort}`,
+      html
+    }, {
+      headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" }
+    });
+
+    console.log("Email diario enviado a", EMAIL_TO);
+  } catch(e) {
+    console.error("Error enviando email:", e.response?.data || e.message);
+  }
+}
+
+function scheduleDailyEmail() {
+  function msUntilNext11UTC() {
+    const now = new Date();
+    const next = new Date();
+    next.setUTCHours(11, 0, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next - now;
+  }
+  const ms = msUntilNext11UTC();
+  console.log(`Email programado en ${Math.round(ms/1000/60)} minutos (11:00 UTC = 07:00 Chile)`);
+  setTimeout(() => {
+    sendDailyDigest();
+    setInterval(sendDailyDigest, 24 * 60 * 60 * 1000);
+  }, ms);
+}
+
+scheduleDailyEmail();
+scheduleEmailScans(sendTelegramMessage);
+
+// ── Cuentas API ───────────────────────────────────────────────
+app.get('/cuentas', auth, async (req, res) => {
+  try {
+    const r = await axios.get(`${SUPABASE_URL}/rest/v1/cuentas?order=nombre`, { headers: SUPA_HEADERS });
+    res.json({ cuentas: r.data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/cuentas', auth, async (req, res) => {
+  try {
+    const { nombre, mes, anio, monto, estado } = req.body;
+    const r = await axios.post(`${SUPABASE_URL}/rest/v1/cuentas`, { nombre, mes, anio, monto: monto||0, estado: estado||'Por pagar' }, { headers: SUPA_HEADERS });
+    res.json({ cuenta: r.data[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/cuentas/:id', auth, async (req, res) => {
+  try {
+    const r = await axios.patch(`${SUPABASE_URL}/rest/v1/cuentas?id=eq.${req.params.id}`, req.body, { headers: SUPA_HEADERS });
+    res.json({ cuenta: r.data[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/cuentas/:id', auth, async (req, res) => {
+  try {
+    await axios.delete(`${SUPABASE_URL}/rest/v1/cuentas?id=eq.${req.params.id}`, { headers: SUPA_HEADERS });
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/send-digest", (req, res) => {
+  if (req.headers["x-api-key"] !== API_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  sendDailyDigest();
+  res.json({ ok: true, message: "Enviando digest..." });
+});
+
+app.get("/", (req, res) => res.send("Bot activo ✓"));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Bot corriendo en puerto ${PORT}`));
+
+// ── Proactive Telegram Notifications ─────────────────────────
+const CHAT_ID = process.env.CHAT_ID || "7783704824";
+
+async function sendTelegramMessage(text) {
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    chat_id: CHAT_ID,
+    text,
+    parse_mode: "Markdown"
+  });
+}
+
+async function sendMorningBriefing() {
+  try {
+    const tasks = await dbGetAll();
+    const pending = tasks.filter(t => t.estado !== "Listo");
+    const top3 = [...pending]
+      .map(t => ({ ...t, score: (t.valor||5)/(t.esfuerzo||5) }))
+      .sort((a,b) => b.score - a.score)
+      .slice(0, 3);
+
+    const dateStr = new Date().toLocaleDateString("es-CL", {
+      weekday:"long", day:"numeric", month:"long", timeZone:"America/Santiago"
+    });
+    const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+
+    let lines = ["*Buenos dias!*", "_" + dateCap + "_", ""];
+
+    if (top3.length) {
+      lines.push("*Top 3 tareas de hoy:*");
+      const medals = ["1.", "2.", "3."];
+      top3.forEach((t,i) => {
+        const score = Math.round((t.valor||5)/(t.esfuerzo||5)*10)/10;
+        lines.push(medals[i] + " " + t.nombre + " (score: " + score + ")");
+      });
+    } else {
+      lines.push("No tienes tareas pendientes!");
+    }
+
+    try {
+      const calMod = require("./calendar");
+      const result = await calMod.executeCalendarTool("list_events", { days: 1 });
+      if (result.events && result.events.length) {
+        lines.push("");
+        lines.push("*Eventos de hoy:*");
+        result.events.forEach(e => {
+          const time = e.start ? new Date(e.start).toLocaleTimeString("es-CL", {
+            hour:"2-digit", minute:"2-digit", timeZone:"America/Santiago"
+          }) : "";
+          lines.push("- " + time + " " + e.summary);
+        });
+      }
+    } catch(e) { /* calendar not connected */ }
+
+    await sendTelegramMessage(lines.join("\n"));
+    console.log("Morning briefing enviado");
+  } catch(e) {
+    console.error("Error morning briefing:", e.message);
+  }
+}
+
+const notifiedEvents = new Set();
+
+async function checkCalendarReminders() {
+  try {
+    const calMod = require("./calendar");
+    const result = await calMod.executeCalendarTool("list_events", { days: 1 });
+    if (!result.events || !result.events.length) return;
+    const now = new Date();
+    for (const event of result.events) {
+      if (!event.start) continue;
+      const start = new Date(event.start);
+      const diffMin = (start - now) / 1000 / 60;
+      if (diffMin > 0 && diffMin <= 30 && !notifiedEvents.has(event.id)) {
+        notifiedEvents.add(event.id);
+        const timeStr = start.toLocaleTimeString("es-CL", {
+          hour:"2-digit", minute:"2-digit", timeZone:"America/Santiago"
+        });
+        await sendTelegramMessage(
+          "Recordatorio: *" + event.summary + "* empieza en " + Math.round(diffMin) + " minutos (" + timeStr + ")"
+        );
+        console.log("Recordatorio enviado:", event.summary);
+      }
+    }
+    if (notifiedEvents.size > 200) notifiedEvents.clear();
+  } catch(e) { /* calendar not connected yet */ }
+}
+
+function scheduleMorningBriefing() {
+  function msUntilNext11UTC() {
+    const now = new Date();
+    const next = new Date();
+    next.setUTCHours(11, 0, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next - now;
+  }
+  const ms = msUntilNext11UTC();
+  console.log("Morning briefing programado en " + Math.round(ms/1000/60) + " min (11:00 UTC = 07:00 Chile)");
+  setTimeout(() => {
+    sendMorningBriefing();
+    setInterval(sendMorningBriefing, 24 * 60 * 60 * 1000);
+  }, ms);
+}
+
+setInterval(checkCalendarReminders, 5 * 60 * 1000);
+scheduleMorningBriefing();
+
+app.get("/send-briefing", (req, res) => {
+  if (req.headers["x-api-key"] !== API_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  sendMorningBriefing();
+  res.json({ ok: true, message: "Enviando briefing..." });
+});
