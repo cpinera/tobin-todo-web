@@ -573,7 +573,7 @@ async function saveSubtasks(id, subs) {
       var safeText = esc(s.text);
       return '<div class="subtask-item">'
         + '<div class="sub-check ' + doneCls + '" onclick="toggleSubtask(' + id + ',' + si + ')">' + checkMark + '</div>'
-        + '<input class="sub-name ' + doneCls + '" value="' + safeText + '" onblur="saveSubtaskName(' + id + ',' + si + ',this.value)" onkeydown="if(event.key==='Enter')this.blur()" />'
+        + '<input class="sub-name ' + doneCls + '" value="' + safeText + '" onblur="saveSubtaskName(' + id + ',' + si + ',this.value)" data-tid="' + id + '" data-si="' + si + '" />'
         + '<button class="btn-sub-del" onclick="deleteSubtask(' + id + ',' + si + ')">✕</button>'
         + '</div>';
     }).join("");
@@ -846,6 +846,13 @@ async function scanGmail(){var btn=document.getElementById("btn-scan");btn.textC
 function closeDraftModal(){document.getElementById("draftModal").style.display="none";draftEmailId=null;}
 async function sendDraftFromModal(){if(!draftEmailId)return;var newDraft=document.getElementById("dm-draft").value.trim();if(!newDraft){showToast("El borrador esta vacio","error");return;}try{var email=allEmails.find(function(e){return e.gmail_id===draftEmailId;});var corr=(email&&email.user_correction)?JSON.parse(email.user_correction):{classification:"auto_reply",action:"auto_reply"};corr.draft_reply=newDraft;await api("/emails/"+draftEmailId,"PATCH",{user_correction:JSON.stringify(corr)});await api("/emails/execute","POST",{gmailIds:[draftEmailId]});allEmails=allEmails.filter(function(e){return e.gmail_id!==draftEmailId;});closeDraftModal();renderEmails();showToast("Respuesta enviada");}catch(ex){showToast(ex.message,"error");}}
 document.addEventListener("DOMContentLoaded",function(){var dm=document.getElementById("draftModal");if(dm)dm.addEventListener("click",function(e){if(e.target===dm)closeDraftModal();});});
+
+// ── Delegated Enter key for dynamically added subtask inputs ─────
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && e.target.classList.contains('sub-name')) {
+    e.target.blur();
+  }
+});
 
 // ── Init ───────────────────────────────────────────────────────
 fetchTasks();
