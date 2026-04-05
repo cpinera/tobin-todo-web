@@ -855,6 +855,8 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ── Init ───────────────────────────────────────────────────────
+document.getElementById('new-task-btn').style.display = 'block';
+document.getElementById('refresh-btn').onclick = fetchTasks;
 fetchTasks();
 </script>
 </body>
