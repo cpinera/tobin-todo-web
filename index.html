@@ -1514,9 +1514,7 @@ function finTcSendMsg(){
 async function finTcClasify(mov,resp){
   try{await api("/movimientos_tc/"+mov.id,"PATCH",{categoria:resp,revisado:true});mov.categoria=resp;mov.revisado=true;finMovList=finMovList.map(m=>m.id===mov.id?mov:m);}catch(e){}
   finTcPending.shift();
-  if(finTcPending.length>0){const nxt=finTcPending[0];finTcAddMsg("claude",'✓ Registrado como "'+resp+'".
-
-¿Y el gasto de $'+(nxt.monto||0).toLocaleString("es-CL")+' en "'+nxt.descripcion+'" ('+( nxt.fecha||"sin fecha")+')? ¿Qué categoría?');}
+  if(finTcPending.length>0){const nxt=finTcPending[0];finTcAddMsg("claude","✓ Registrado como \""+resp+"\"\n\n¿Y el gasto de $"+(nxt.monto||0).toLocaleString("es-CL")+" en \""+nxt.descripcion+"\" ("+(nxt.fecha||"sin fecha")+") ¿Qué categoría?");}
   else{finTcAddMsg("claude","✅ ¡Listo! Todos los movimientos clasificados. Revisa el Resumen.");finRenderMovimientos();finRenderResumen();}
 }
 async function finTcAnalizar(){
@@ -1534,7 +1532,7 @@ async function finTcAnalizar(){
   try{
     const isPDF=finTcFile.type==="application/pdf";
     const cb=isPDF?{type:"document",source:{type:"base64",media_type:"application/pdf",data:finTcBase64}}:{type:"image",source:{type:"base64",media_type:finTcFile.type,data:finTcBase64}};
-    const sys="Eres un asistente financiero personal analizando movimientos de tarjeta de crédito para Cristóbal.
+    const sys=`Eres un asistente financiero personal analizando movimientos de tarjeta de crédito para Cristóbal.
 Objetivos:
 1. Extraer TODOS los movimientos (ignorar pagos/abonos al banco)
 2. Cruzar con gastos fijos (referencia: "+gfRef+")
@@ -1548,7 +1546,7 @@ REGLAS:
 - Colegio Cordillera → item_id=18, VMA → item_id=17, Cantagallo → item_id=19
 
 Responde SOLO con JSON sin texto:
-{"movimientos":[{"fecha":"2026-03-05","descripcion":"COLEGIO VILLA MARIA","monto":781536,"moneda":"CLP","categoria":"Colegios","gf_item_id":17,"es_gasto_fijo":true,"revisado":true}],"dudosos":[],"total":1500000,"resumen":"1 línea"}";
+{"movimientos":[{"fecha":"2026-03-05","descripcion":"COLEGIO VILLA MARIA","monto":781536,"moneda":"CLP","categoria":"Colegios","gf_item_id":17,"es_gasto_fijo":true,"revisado":true}],"dudosos":[],"total":1500000,"resumen":"1 línea"}`
     const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,system:sys,messages:[{role:"user",content:[cb,{type:"text",text:"Analiza este estado de cuenta de "+tarjeta+" del período "+periodo+"."}]}]})});
     const data=await resp.json();
     const raw=data.content.map(b=>b.text||"").join("");
@@ -1569,15 +1567,9 @@ Responde SOLO con JSON sin texto:
     }
     finRenderMovimientos();finRenderGastos();finRenderResumen();
     finTcPending=(result.dudosos||[]).map(i=>saved[i]).filter(Boolean);
-    const msg="Extraje "+saved.length+" movimientos de "+tarjeta+".
-✅ "+saved.filter(m=>m.es_gasto_fijo).length+" gastos fijos reconocidos y completados.
-💰 Total: $"+(result.total||0).toLocaleString("es-CL")+(result.resumen?"
-
-"+result.resumen:"");
+    const msg="Extraje "+saved.length+" movimientos de "+tarjeta+".\n✅ "+saved.filter(m=>m.es_gasto_fijo).length+" gastos fijos reconocidos y completados.\n💰 Total: $"+(result.total||0).toLocaleString("es-CL")+(result.resumen?"\n\n"+result.resumen:"");
     finTcAddMsg("claude",msg);
-    if(finTcPending.length>0){const f=finTcPending[0];setTimeout(()=>finTcAddMsg("claude","Tengo "+finTcPending.length+" movimiento(s) que no pude clasificar bien.
-
-¿El gasto de $"+(f.monto||0).toLocaleString("es-CL")+' en "'+f.descripcion+'" ('+(f.fecha||"sin fecha")+') qué es?'),500);}
+    if(finTcPending.length>0){const f=finTcPending[0];setTimeout(()=>{finTcAddMsg("claude","Tengo "+finTcPending.length+" movimiento(s) que no pude clasificar.\n\n¿El gasto de $"+(f.monto||0).toLocaleString("es-CL")+" en '"+f.descripcion+"' qué es?");},500);}
     else finTcAddMsg("claude","✅ Pude clasificar todos los movimientos automáticamente.");
   }catch(e){finTcAddMsg("claude","❌ Error al analizar: "+e.message);}
   finally{document.getElementById("fin-analyze-icon").textContent="✨";document.getElementById("fin-analyze-txt").textContent="Analizar con Claude";document.getElementById("fin-btn-analyze").disabled=false;}
