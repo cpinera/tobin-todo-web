@@ -557,20 +557,13 @@ a { color: inherit; text-decoration: none; }
            onclick="document.getElementById('fin-tc-file').click()"
            ondragover="this.style.borderColor='var(--purple)';event.preventDefault()"
            ondragleave="this.style.borderColor='var(--border)'"
-           ondrop="this.style.borderColor='var(--border)';event.preventDefault();finTcProcess(event.dataTransfer.files[0])">
+           ondrop="this.style.borderColor='var(--border)';event.preventDefault();finTcProcessMultiple(event.dataTransfer.files)">
         <div style="font-size:28px;margin-bottom:6px">📄</div>
-        <div style="font-size:14px;font-weight:500;color:var(--muted)">Arrastra la cartola o haz clic para seleccionar</div>
-        <div style="font-size:12px;color:var(--muted2);margin-top:4px">PDF o imagen · máx 10MB</div>
+        <div style="font-size:14px;font-weight:500;color:var(--muted)">Arrastra las cartolas o haz clic para seleccionar</div>
+        <div style="font-size:12px;color:var(--muted2);margin-top:4px">PDF o imagen · múltiples archivos · máx 10MB c/u</div>
       </div>
-      <input type="file" id="fin-tc-file" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="finTcProcess(this.files[0])"/>
-      <div id="fin-tc-prev" style="display:none;margin:0 16px 12px;display:none">
-        <div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px">
-          <span id="fin-tc-prev-icon" style="font-size:22px">📄</span>
-          <span id="fin-tc-prev-name" style="flex:1;font-size:13px;font-weight:500"></span>
-          <span id="fin-tc-prev-size" style="font-size:11px;color:var(--muted2)"></span>
-          <button class="btn-del" onclick="finTcRemove()">✕</button>
-        </div>
-      </div>
+      <input type="file" id="fin-tc-file" accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none" onchange="finTcProcessMultiple(this.files)"/>
+      <div id="fin-tc-files-list" style="display:none;margin:0 16px 12px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 16px 12px">
         <div>
           <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px">Tarjeta</div>
@@ -1762,26 +1755,67 @@ async function finSaveNota() {
 }
 
 // ── TC Upload ──
-function finTcProcess(f) {
-  if (!f) return;
-  finTcFile = f;
-  var sz = f.size < 1024*1024 ? Math.round(f.size/1024) + "KB" : (f.size/1024/1024).toFixed(1) + "MB";
-  var icon = f.type === "application/pdf" ? "📄" : "🖼️";
-  var pi = document.getElementById("fin-tc-prev-icon"); if(pi) pi.textContent = icon;
-  var pn = document.getElementById("fin-tc-prev-name"); if(pn) pn.textContent = f.name;
-  var ps = document.getElementById("fin-tc-prev-size"); if(ps) ps.textContent = sz;
-  var prev = document.getElementById("fin-tc-prev"); if(prev) prev.style.display = "block";
-  var btn = document.getElementById("fin-btn-analyze"); if(btn) { btn.disabled = false; btn.style.opacity = "1"; }
-  var r = new FileReader();
-  r.onload = function(e) { finTcBase64 = e.target.result.split(",")[1]; };
-  r.readAsDataURL(f);
+// Multiple file support
+var finTcFiles = []; // Array of {file, base64, name}
+
+function finTcProcessMultiple(fileList) {
+  if (!fileList || fileList.length === 0) return;
+  finTcFiles = [];
+  var listEl = document.getElementById("fin-tc-files-list");
+  if (listEl) { listEl.style.display = "block"; listEl.innerHTML = ""; }
+
+  var pending = fileList.length;
+  Array.from(fileList).forEach(function(f, i) {
+    var r = new FileReader();
+    r.onload = function(e) {
+      finTcFiles[i] = { file: f, base64: e.target.result.split(",")[1], name: f.name };
+      pending--;
+      if (pending === 0) {
+        var btn = document.getElementById("fin-btn-analyze");
+        if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+      }
+    };
+    r.readAsDataURL(f);
+
+    if (listEl) {
+      var sz = f.size < 1024*1024 ? Math.round(f.size/1024) + "KB" : (f.size/1024/1024).toFixed(1) + "MB";
+      var icon = f.type === "application/pdf" ? "📄" : "🖼️";
+      var row = document.createElement("div");
+      row.id = "tc-file-row-" + i;
+      row.style.cssText = "display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:6px";
+      row.innerHTML = '<span style="font-size:20px">' + icon + '</span>'
+        + '<span style="flex:1;font-size:13px;font-weight:500">' + f.name + '</span>'
+        + '<span style="font-size:11px;color:var(--muted2)">' + sz + '</span>'
+        + '<button class="btn-del" onclick="finTcRemoveOne(' + i + ')">✕</button>';
+      listEl.appendChild(row);
+    }
+  });
 }
+
+function finTcRemoveOne(i) {
+  finTcFiles[i] = null;
+  var row = document.getElementById("tc-file-row-" + i);
+  if (row) row.remove();
+  var remaining = finTcFiles.filter(function(f) { return f !== null; });
+  if (remaining.length === 0) {
+    var listEl = document.getElementById("fin-tc-files-list");
+    if (listEl) listEl.style.display = "none";
+    var fi = document.getElementById("fin-tc-file"); if (fi) fi.value = "";
+    var btn = document.getElementById("fin-btn-analyze");
+    if (btn) { btn.disabled = true; btn.style.opacity = ".45"; }
+  }
+}
+
 function finTcRemove() {
+  finTcFiles = [];
   finTcFile = null; finTcBase64 = null;
-  var prev = document.getElementById("fin-tc-prev"); if(prev) prev.style.display = "none";
-  var fi = document.getElementById("fin-tc-file"); if(fi) fi.value = "";
-  var btn = document.getElementById("fin-btn-analyze"); if(btn) { btn.disabled = true; btn.style.opacity = ".45"; }
+  var listEl = document.getElementById("fin-tc-files-list"); if (listEl) { listEl.style.display = "none"; listEl.innerHTML = ""; }
+  var fi = document.getElementById("fin-tc-file"); if (fi) fi.value = "";
+  var btn = document.getElementById("fin-btn-analyze"); if (btn) { btn.disabled = true; btn.style.opacity = ".45"; }
 }
+
+// Keep old single file for compatibility
+function finTcProcess(f) { if (f) finTcProcessMultiple([f]); }
 function finTcAddMsg(role, text) {
   var msgs = document.getElementById("fin-chat-msgs");
   if (!msgs) return;
@@ -1816,7 +1850,8 @@ async function finTcClasify(mov, resp) {
   }
 }
 async function finTcAnalizar() {
-  if (!finTcFile || !finTcBase64) { showToast("Sube un archivo primero", "error"); return; }
+  var validFiles = (finTcFiles || []).filter(function(f) { return f !== null; });
+  if (validFiles.length === 0) { showToast("Sube al menos un archivo primero", "error"); return; }
   var tarjeta = document.getElementById("fin-tc-tarjeta").value;
   var periodo = document.getElementById("fin-tc-periodo").value || (FIN_MESES[finMes-1] + " " + finAnio);
   var chatWrap = document.getElementById("fin-chat-wrap");
@@ -1834,6 +1869,15 @@ async function finTcAnalizar() {
   if (btn) btn.disabled = true;
 
   var gfRef = GF_CATALOG.map(function(r, i) { return (i+1) + ":" + r[1] + "(" + r[0] + ")"; }).join(",");
+  var totalSaved = 0;
+  // Process each file sequentially
+  for (var fi = 0; fi < validFiles.length; fi++) {
+    var currentFile = validFiles[fi];
+    finTcBase64 = currentFile.base64;
+    finTcFile = currentFile.file;
+    if (validFiles.length > 1) {
+      finTcAddMsg("claude", "Procesando cartola " + (fi+1) + "/" + validFiles.length + ": " + currentFile.name + "...");
+    }
   var sysPrompt = [
     "Eres un asistente financiero personal analizando movimientos de tarjeta de crédito para Cristóbal.",
     "1. Extraer TODOS los movimientos (ignorar pagos/abonos al banco)",
@@ -1849,21 +1893,19 @@ async function finTcAnalizar() {
       ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:finTcBase64}}
       : {type:"image", source:{type:"base64", media_type:finTcFile.type, data:finTcBase64}};
 
-    var resp = await fetch("https://api.anthropic.com/v1/messages", {
+    var resp = await fetch(API_URL + "/analizar-tc", {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
+      headers: HEADERS,
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4000,
-        system: sysPrompt,
-        messages: [{role:"user", content:[cb, {type:"text", text:"Analiza este estado de cuenta de " + tarjeta + " del período " + periodo + "."}]}]
+        base64: finTcBase64,
+        mimeType: finTcFile.type,
+        tarjeta: tarjeta,
+        periodo: periodo,
+        gfCatalog: GF_CATALOG
       })
     });
-    var data = await resp.json();
-    var raw = data.content.map(function(b) { return b.text || ""; }).join("");
-    var jm = raw.match(/\{[\s\S]*\}/);
-    if (!jm) throw new Error("No se pudo parsear la respuesta");
-    var result = JSON.parse(jm[0]);
+    var result = await resp.json();
+    if (!resp.ok) throw new Error(result.error || "Error del servidor");
     var saved = [];
     for (var i = 0; i < (result.movimientos || []).length; i++) {
       var mov = result.movimientos[i];
@@ -1905,11 +1947,14 @@ async function finTcAnalizar() {
       finTcAddMsg("claude", "✅ Todo clasificado automáticamente.");
     }
   } catch(e) {
-    finTcAddMsg("claude", "❌ Error al analizar: " + e.message);
-  } finally {
-    if (icon) icon.textContent = "✨";
-    if (txt) txt.textContent = "Analizar con Claude";
-    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+    finTcAddMsg("claude", "❌ Error al analizar " + currentFile.name + ": " + e.message);
+  }
+  } // end for loop
+  if (icon) icon.textContent = "✨";
+  if (txt) txt.textContent = "Analizar con Claude";
+  if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  if (validFiles.length > 1) {
+    finTcAddMsg("claude", "✅ Procesé " + validFiles.length + " cartolas. Revisa el Resumen para el desglose completo.");
   }
 }
 
